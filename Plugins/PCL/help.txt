@@ -1,0 +1,19 @@
+3rd party libs/build system
+	--> https://www.unrealcode.net/content/WrappingALibrary.html
+	--> https://docs.unrealengine.com/4.27/en-US/ProductionPipelines/BuildTools/UnrealBuildTool/ThirdPartyLibraries/
+	--> https://forums.unrealengine.com/t/build-system-includepathsmodulenames-and-dependencymodulenames-documentation-clarification/105424
+
+pcl libs
+	--> http://www.valentinkraft.de/including-the-point-cloud-library-into-unreal-tutorial/
+
+modules
+	--> https://docs.unrealengine.com/5.2/en-US/unreal-engine-modules/
+
+shaders
+	--> https://docs.unrealengine.com/5.1/en-US/creating-a-new-global-shader-as-a-plugin-in-unreal-engine/
+	--> https://dev.epicgames.com/community/learning/tutorials/1lGL/unreal-engine-how-to-create-a-custom-ray-tracing-shader-as-a-plugin
+	--> https://dev.epicgames.com/community/learning/tutorials/WkwJ/unreal-engine-simple-compute-shader-with-cpu-readback
+
+raycast
+	--> https://forums.unrealengine.com/t/parallel-raycast-for-lidar-simulation/612158/5
+	--> https://github.com/metabotics-ai/MetaLidar
