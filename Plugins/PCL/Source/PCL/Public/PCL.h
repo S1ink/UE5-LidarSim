@@ -4,15 +4,10 @@
 
 #include "Modules/ModuleManager.h"
 
-class FPCLModule : public IModuleInterface
-{
-public:
 
-	/** IModuleInterface implementation */
+class FPCLModule : public IModuleInterface {
+public:
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
 
-private:
-	/** Handle to the test dll we will load */
-	void*	ExampleLibraryHandle;
 };

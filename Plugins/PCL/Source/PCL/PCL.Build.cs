@@ -8,44 +8,22 @@ public class PCL : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
-		PublicIncludePaths.AddRange(
-			new string[] {
-                //"D:\\Programs\\PCL 1.13.1\\3rdParty\\Eigen\\eigen3"
-            }
-			);
-				
-		
-		PrivateIncludePaths.AddRange(
-			new string[] {
-				// ... add other private include paths required here ...
-			}
-			);
-			
-		
-		PublicDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"Core",
-				"PCLLibrary",
-				"Projects"
-				// ... add other public dependencies that you statically link with here ...
-			}
-			);
-			
-		
-		PrivateDependencyModuleNames.AddRange(
-			new string[]
-			{
-				// ... add private dependencies that you statically link with here ...	
-			}
-			);
-		
-		
-		DynamicallyLoadedModuleNames.AddRange(
-			new string[]
-			{
-				// ... add any modules that your module loads dynamically here ...
-			}
-			);
+		PublicIncludePaths.AddRange( new string[] {  } );
+		PrivateIncludePaths.AddRange( new string[] {  } );
+
+		PublicDependencyModuleNames.AddRange( new string[] {
+			"Core",
+			"PCLLibrary",
+			"Projects"
+		} );
+		PrivateDependencyModuleNames.AddRange( new string[] {
+			"Core",
+			"CoreUObject",
+			"Engine",
+			"PhysicsCore",
+			"Projects"
+		} );
+
+		DynamicallyLoadedModuleNames.AddRange( new string[] {  } );
 	}
 }
