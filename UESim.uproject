@@ -35,8 +35,12 @@
 			]
 		},
 		{
-			"Name": "LiDAR",
-			"Enabled": false
+			"Name": "GPUPointCloudRenderer",
+			"Enabled": true
+		},
+		{
+			"Name": "PCL",
+			"Enabled": true
 		}
 	],
 	"TargetPlatforms": [
