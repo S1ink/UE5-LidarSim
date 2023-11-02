@@ -9,9 +9,11 @@ THIRD_PARTY_INCLUDES_START
 #include <pcl/point_types.h>
 #endif
 THIRD_PARTY_INCLUDES_END
+#include "PCLHelper.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(PCL, Log, All);
 DEFINE_LOG_CATEGORY(PCL);
+#define RUN_TESTS
 
 
 void FPCLModule::StartupModule() {
@@ -25,6 +27,10 @@ void FPCLModule::StartupModule() {
 		UE_LOG(PCL, Log, TEXT("Test PCD load failed :("));
 	}
 #endif
+#ifdef RUN_TESTS
+	UE_LOG(PCL, Log, TEXT("%s"), *run_tests());
+#endif
+
 }
 
 void FPCLModule::ShutdownModule() {}

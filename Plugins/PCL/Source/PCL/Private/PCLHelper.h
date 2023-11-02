@@ -13,6 +13,9 @@ THIRD_PARTY_INCLUDES_START
 THIRD_PARTY_INCLUDES_END;
 
 
+static FString run_tests();
+
+
 template<typename Point_T = pcl::PointXYZ>
 struct PCLHelper {
 
