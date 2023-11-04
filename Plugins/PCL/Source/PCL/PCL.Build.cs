@@ -13,13 +13,12 @@ public class PCL : ModuleRules
 
 		PublicDependencyModuleNames.AddRange( new string[] {
 			"Core",
-			"PCLLibrary",
-			"Projects"
-		} );
+            "CoreUObject",
+            "Engine",
+            "Projects",
+            "PCLLibrary"
+        } );
 		PrivateDependencyModuleNames.AddRange( new string[] {
-			"Core",
-			"CoreUObject",
-			"Engine",
 			"PhysicsCore",
 			"Projects"
 		} );

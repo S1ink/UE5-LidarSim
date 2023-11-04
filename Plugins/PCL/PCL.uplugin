@@ -6,7 +6,7 @@
 	"Description": "",
 	"Category": "Simulation",
 	"CreatedBy": "Slink",
-	"CreatedByURL": "",
+	"CreatedByURL": "https://github.com/S1ink",
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
@@ -15,11 +15,12 @@
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
 	"Installed": false,
+	"WhitelistPlatforms": [ "Win64" ],
 	"Modules": [
 		{
 			"Name": "PCL",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "PreDefault"
 		}
 	]
 }

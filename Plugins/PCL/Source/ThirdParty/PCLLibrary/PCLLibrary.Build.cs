@@ -81,17 +81,11 @@ public class PCLLibrary : ModuleRules
 			// system, filesystem, serialization, atomic, iostreams, zlib, bzip2
 
 		}
-		else if (Target.Platform == UnrealTargetPlatform.Mac)
-		{
-			PublicDelayLoadDLLs.Add(Path.Combine(ModuleDirectory, "Mac", "Release", "libExampleLibrary.dylib"));
-			RuntimeDependencies.Add("$(PluginDir)/Source/ThirdParty/PCLLibrary/Mac/Release/libExampleLibrary.dylib");
+		else if (Target.Platform == UnrealTargetPlatform.Mac) {
+			System.Console.WriteLine("MacOS PCL libs have not been set up.");
 		}
-		else if (Target.Platform == UnrealTargetPlatform.Linux)
-		{
-			string ExampleSoPath = Path.Combine("$(PluginDir)", "Binaries", "ThirdParty", "PCLLibrary", "Linux", "x86_64-unknown-linux-gnu", "libExampleLibrary.so");
-			PublicAdditionalLibraries.Add(ExampleSoPath);
-			PublicDelayLoadDLLs.Add(ExampleSoPath);
-			RuntimeDependencies.Add(ExampleSoPath);
+		else if (Target.Platform == UnrealTargetPlatform.Linux) {
+			System.Console.WriteLine("Linux PCL libs have not been set up.");
 		}
 	}
 }
