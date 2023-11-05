@@ -15,6 +15,7 @@ THIRD_PARTY_INCLUDES_START
 THIRD_PARTY_INCLUDES_END
 
 #include "PCLHelper.h"
+#include "LidarSimComponent.h"
 
 
 #define ASSERT_FP_TYPE(fp_T) static_assert(std::is_floating_point_v<fp_T>, "fp_T must be floating point type")
@@ -86,17 +87,16 @@ struct Tracing {
 		return vecs;
 	}
 	/* angles should be in radians */
-	template<typename fp_T = double>
-	static void sphericalVectorProduct(const TArray<fp_T>& _theta, const TArray<fp_T>& _phi, TArray<UE::Math::TVector<fp_T> >& vecs) {
+	template<typename fp_T = double, typename fpo_T = fp_T>
+	static void sphericalVectorProduct(const TArray<fp_T>& _theta, const TArray<fp_T>& _phi, TArray<UE::Math::TVector<fpo_T> >& vecs) {
 		ASSERT_FP_TYPE(fp_T);
 		const size_t
 			total_azimuth = _theta.Num(),
 			total = total_azimuth * _phi.Num();
-		vecs.Reserve(total);
+		vecs.SetNum(total);
 
 		// precompute theta sine and cosine values since we loop through for each phi angle
-		TArray<fp_T> theta_components{};
-		theta_components.Reserve(total_azimuth * 2);
+		fp_T* theta_components{ new fp_T[total_azimuth * 2] };
 		size_t index = 0;
 		for (const fp_T theta : _theta) {
 			theta_components[index++] = sin(theta);
@@ -113,7 +113,7 @@ struct Tracing {
 			// loop though each theta
 			for (int i = 0; i < total_azimuth; i++) {
 				// easier access to the precomputed components using pointer arithmetic
-				const fp_T* theta = theta_components.GetData() + (i * 2 * sizeof(fp_T));
+				const fp_T* theta = theta_components + (i * 2);
 				// form xyz based on spherical-cartesian conversion
 				vecs[index++] = {
 					cos_phi * theta[1],		// x = r * cos(phi) * cos(theta)
@@ -122,6 +122,8 @@ struct Tracing {
 				};
 			}
 		}
+
+		delete[] theta_components;
 
 	}
 
@@ -136,8 +138,8 @@ struct Tracing {
 	) {
 		ASSERT_FP_TYPE(fp_T);
 		const size_t len = vecs.Num();
-		if (start_vecs.Num() < len) start_vecs.Reserve(len);
-		if (end_vecs.Num() < len) end_vecs.Reserve(len);
+		if (start_vecs.Num() < len) start_vecs.SetNum(len);
+		if (end_vecs.Num() < len) end_vecs.SetNum(len);
 		for (int i = 0; i < len; i++) {
 			genTraceBounds<fp_T>(to_world, vecs[i], range, start_vecs[i], end_vecs[i]);
 		}
@@ -197,3 +199,42 @@ struct Tracing {
 
 
 };
+
+
+
+
+
+
+DEFINE_LOG_CATEGORY(LidarSim);
+
+void ULidarSimulationComponent::ConvertToRadians(TArray<float>& thetas, TArray<float>& phis) {
+	for (int i = 0; i < thetas.Num(); i++) {
+		thetas[i] = FMath::DegreesToRadians(thetas[i]);
+	}
+	for (int i = 0; i < phis.Num(); i++) {
+		phis[i] = FMath::DegreesToRadians(phis[i]);
+	}
+}
+
+void ULidarSimulationComponent::GenerateDirections(const TArray<float>& thetas, const TArray<float>& phis, TArray<FVector>& directions) {
+	Tracing::sphericalVectorProduct<float, double>(thetas, phis, directions);
+}
+
+double ULidarSimulationComponent::Scan(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range) {
+	const double a = FPlatformTime::Seconds();
+	Tracing::scan(this->GetOwner(), directions, max_range, hits);
+	return FPlatformTime::Seconds() - a;
+}
+
+double ULidarSimulationComponent::SavePointsToFile(const TArray<FVector4>& points, const FString& fname) {
+	pcl::PointCloud<FSample> cloud;
+	const FSample* pts = reinterpret_cast<const FSample*>(points.GetData());
+	cloud.points.assign(pts, pts + points.Num());
+	cloud.width = points.Num();
+	cloud.height = 1;
+	const double a = FPlatformTime::Seconds();
+	if (pcl::io::savePCDFile<FSample>(std::string(TCHAR_TO_UTF8(*fname)), cloud) != 0) {
+		UE_LOG(LidarSim, Warning, TEXT("Failed to save points to file: %s"), *fname);
+	}
+	return FPlatformTime::Seconds() - a;
+}
