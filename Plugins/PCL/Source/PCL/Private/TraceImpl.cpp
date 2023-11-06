@@ -161,7 +161,9 @@ struct Tracing {
 
 
 
-	static void scan(const AActor* src, const TArray<FVector>& directions, const double range, TArray<FVector4>& results) {
+	template<typename intensity_T = float>
+	static void scan(const AActor* src, const TArray<FVector>& directions, const double range, std::function<void(FVector&&, intensity_T)> out) {
+		ASSERT_FP_TYPE(intensity_T);
 
 		TStatId stats{};
 		FCollisionQueryParams trace_params = FCollisionQueryParams(TEXT("LiDAR Trace"), stats, true, src);
@@ -183,7 +185,7 @@ struct Tracing {
 
 			if (result.bBlockingHit) {
 				// set W component to represent intensity --> determined from intersection material somehow...
-				results.Emplace(result.Location);	// change to FSample or other PCL compatible vector type
+				out(FVector(result.Location), (intensity_T)1.0);	// change to FSample or other PCL compatible vector type
 			}
 
 		}
@@ -220,9 +222,45 @@ void ULidarSimulationComponent::GenerateDirections(const TArray<float>& thetas, 
 	Tracing::sphericalVectorProduct<float, double>(thetas, phis, directions);
 }
 
-double ULidarSimulationComponent::Scan(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range) {
+double ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range) {
 	const double a = FPlatformTime::Seconds();
-	Tracing::scan(this->GetOwner(), directions, max_range, hits);
+	if (hits.Num() != 0) {
+		UE_LOG(LidarSim, Warning, TEXT("Hits output array contains prexisting elements."));
+	}
+	Tracing::scan<float>(this->GetOwner(), directions, max_range,
+		[&hits](FVector&& pos, float i) {
+			hits.Emplace(std::move(pos), (double)i);
+		}
+	);
+	return FPlatformTime::Seconds() - a;
+}
+double ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range) {
+	const double a = FPlatformTime::Seconds();
+	if (positions.Num() != 0) {					UE_LOG(LidarSim, Warning, TEXT("Positions output array contains prexisting elements.")); }
+	if (intensities.Num() != 0) {				UE_LOG(LidarSim, Warning, TEXT("Intensities output array contains prexisting elements.")); }
+	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSim, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
+	Tracing::scan<float>(this->GetOwner(), directions, max_range,
+		[&positions, &intensities](FVector&& pos, float i) {
+			positions.Emplace(std::move(pos));
+			intensities.Add(i);
+		}
+	);
+	return FPlatformTime::Seconds() - a;
+}
+double ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray<FLinearColor>& positions, TArray<uint8>& generated_colors, const float max_range, const FColor intensity_albedo) {
+	const double a = FPlatformTime::Seconds();
+	if (positions.Num() != 0) {							UE_LOG(LidarSim, Warning, TEXT("Positions output array contains prexisting elements.")); }
+	if (generated_colors.Num() != 0) {					UE_LOG(LidarSim, Warning, TEXT("Intensities output array contains prexisting elements.")); }
+	if (positions.Num() != generated_colors.Num()) {	UE_LOG(LidarSim, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
+	Tracing::scan<float>(this->GetOwner(), directions, max_range,
+		[&positions, &generated_colors, &intensity_albedo](FVector&& pos, float i) {
+			positions.Emplace(std::move(pos));
+			generated_colors.Add(i * intensity_albedo.R);	// there is probably a more optimal way to add 4 units to the array
+			generated_colors.Add(i * intensity_albedo.G);
+			generated_colors.Add(i * intensity_albedo.B);
+			generated_colors.Add(i * intensity_albedo.A);
+		}
+	);
 	return FPlatformTime::Seconds() - a;
 }
 
