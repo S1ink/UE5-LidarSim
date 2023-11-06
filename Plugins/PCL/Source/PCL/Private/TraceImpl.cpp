@@ -156,7 +156,7 @@ struct Tracing {
 		ASSERT_FP_TYPE(fp_T);
 		// ray should extend from transformer's position in the rotated direction as far as the range
 		start_vec = to_world.GetLocation();
-		end_vec = to_world.TransformVectorNoScale(vec * range);
+		end_vec = to_world.TransformPositionNoScale(vec * range);
 	}
 
 
