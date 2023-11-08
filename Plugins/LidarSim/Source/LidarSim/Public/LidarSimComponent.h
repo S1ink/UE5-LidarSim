@@ -5,11 +5,11 @@
 
 #include "LidarSimComponent.generated.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(LidarSim, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LidarSimComponent, Log, All);
 
 
 UCLASS(ClassGroup = Simulation, meta = (BlueprintSpawnableComponent))
-class PCL_API ULidarSimulationComponent : public USceneComponent {
+class LIDARSIM_API ULidarSimulationComponent : public USceneComponent {
 
 	GENERATED_BODY()
 

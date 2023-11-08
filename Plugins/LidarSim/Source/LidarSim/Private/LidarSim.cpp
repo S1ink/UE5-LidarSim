@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "PCL.h"
+#include "LidarSim.h"
 
 THIRD_PARTY_INCLUDES_START
 #include <pcl/pcl_config.h>
@@ -9,15 +9,15 @@ THIRD_PARTY_INCLUDES_START
 #include <pcl/point_types.h>
 #endif
 THIRD_PARTY_INCLUDES_END
-#include "PCLHelper.h"
+//#include "PCLHelper.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(PCL, Log, All);
-DEFINE_LOG_CATEGORY(PCL);
+DECLARE_LOG_CATEGORY_EXTERN(LidarSim, Log, All);
+DEFINE_LOG_CATEGORY(LidarSim);
 //#define RUN_TESTS
 
 
-void FPCLModule::StartupModule() {
-	UE_LOG(PCL, Log, TEXT("Successfully loaded PCL Version: %s \n"), TEXT(PCL_VERSION_PRETTY));
+void FLidarSimModule::StartupModule() {
+	UE_LOG(LidarSim, Log, TEXT("Successfully loaded PCL Version: %s \n"), TEXT(PCL_VERSION_PRETTY));
 
 #ifdef PCL_TEST_LOAD
 	pcl::PointCloud<pcl::PointXYZ> cloud;
@@ -33,8 +33,8 @@ void FPCLModule::StartupModule() {
 
 }
 
-void FPCLModule::ShutdownModule() {}
+void FLidarSimModule::ShutdownModule() {}
 
 
 #undef LOCTEXT_NAMESPACE
-IMPLEMENT_MODULE(FPCLModule, PCL)
+IMPLEMENT_MODULE(FLidarSimModule, LidarSim)

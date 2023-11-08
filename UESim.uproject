@@ -39,7 +39,7 @@
 			"Enabled": true
 		},
 		{
-			"Name": "PCL",
+			"Name": "LidarSim",
 			"Enabled": true
 		}
 	],

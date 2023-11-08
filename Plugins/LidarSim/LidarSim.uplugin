@@ -2,8 +2,8 @@
 	"FileVersion": 3,
 	"Version": 1,
 	"VersionName": "1.0",
-	"FriendlyName": "PCL",
-	"Description": "",
+	"FriendlyName": "Lidar Simulation",
+	"Description": "Lidar Simulation and point cloud processing",
 	"Category": "Simulation",
 	"CreatedBy": "Slink",
 	"CreatedByURL": "https://github.com/S1ink",
@@ -15,10 +15,12 @@
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
 	"Installed": false,
-	"WhitelistPlatforms": [ "Win64" ],
+	"WhitelistPlatforms": [
+		"Win64"
+	],
 	"Modules": [
 		{
-			"Name": "PCL",
+			"Name": "LidarSim",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault"
 		}

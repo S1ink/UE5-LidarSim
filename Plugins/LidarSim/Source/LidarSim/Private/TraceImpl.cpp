@@ -207,7 +207,7 @@ struct Tracing {
 
 
 
-DEFINE_LOG_CATEGORY(LidarSim);
+DEFINE_LOG_CATEGORY(LidarSimComponent);
 
 void ULidarSimulationComponent::ConvertToRadians(TArray<float>& thetas, TArray<float>& phis) {
 	for (int i = 0; i < thetas.Num(); i++) {
@@ -225,7 +225,7 @@ void ULidarSimulationComponent::GenerateDirections(const TArray<float>& thetas, 
 double ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range) {
 	const double a = FPlatformTime::Seconds();
 	if (hits.Num() != 0) {
-		UE_LOG(LidarSim, Warning, TEXT("Hits output array contains prexisting elements."));
+		UE_LOG(LidarSimComponent, Warning, TEXT("Hits output array contains prexisting elements."));
 	}
 	Tracing::scan<float>(this->GetOwner(), directions, max_range,
 		[&hits](FVector&& pos, float i) {
@@ -236,9 +236,9 @@ double ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArr
 }
 double ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range) {
 	const double a = FPlatformTime::Seconds();
-	if (positions.Num() != 0) {					UE_LOG(LidarSim, Warning, TEXT("Positions output array contains prexisting elements.")); }
-	if (intensities.Num() != 0) {				UE_LOG(LidarSim, Warning, TEXT("Intensities output array contains prexisting elements.")); }
-	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSim, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
+	if (positions.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
+	if (intensities.Num() != 0) {				UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
+	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
 	Tracing::scan<float>(this->GetOwner(), directions, max_range,
 		[&positions, &intensities](FVector&& pos, float i) {
 			positions.Emplace(std::move(pos));
@@ -249,9 +249,9 @@ double ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArr
 }
 double ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray<FLinearColor>& positions, TArray<uint8>& generated_colors, const float max_range, const FColor intensity_albedo) {
 	const double a = FPlatformTime::Seconds();
-	if (positions.Num() != 0) {							UE_LOG(LidarSim, Warning, TEXT("Positions output array contains prexisting elements.")); }
-	if (generated_colors.Num() != 0) {					UE_LOG(LidarSim, Warning, TEXT("Intensities output array contains prexisting elements.")); }
-	if (positions.Num() != generated_colors.Num()) {	UE_LOG(LidarSim, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
+	if (positions.Num() != 0) {							UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
+	if (generated_colors.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
+	if (positions.Num() != generated_colors.Num()) {	UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
 	Tracing::scan<float>(this->GetOwner(), directions, max_range,
 		[&positions, &generated_colors, &intensity_albedo](FVector&& pos, float i) {
 			positions.Emplace(std::move(pos));
@@ -272,7 +272,7 @@ double ULidarSimulationComponent::SavePointsToFile(const TArray<FVector4>& point
 	cloud.height = 1;
 	const double a = FPlatformTime::Seconds();
 	if (pcl::io::savePCDFile<FSample>(std::string(TCHAR_TO_UTF8(*fname)), cloud) != 0) {
-		UE_LOG(LidarSim, Warning, TEXT("Failed to save points to file: %s"), *fname);
+		UE_LOG(LidarSimComponent, Warning, TEXT("Failed to save points to file: %s"), *fname);
 	}
 	return FPlatformTime::Seconds() - a;
 }

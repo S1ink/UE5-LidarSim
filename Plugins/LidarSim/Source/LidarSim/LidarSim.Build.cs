@@ -2,9 +2,9 @@
 
 using UnrealBuildTool;
 
-public class PCL : ModuleRules
+public class LidarSim : ModuleRules
 {
-	public PCL(ReadOnlyTargetRules Target) : base(Target)
+	public LidarSim(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
