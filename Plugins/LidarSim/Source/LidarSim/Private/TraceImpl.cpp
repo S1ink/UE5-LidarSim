@@ -1,4 +1,5 @@
 #include <type_traits>
+#include <memory>
 
 #include <CoreMinimal.h>
 #include <Components/ActorComponent.h>
@@ -22,7 +23,7 @@ THIRD_PARTY_INCLUDES_END
 
 /* Analogous to pcl::PointXYZI but memory aligned to match TVector4<> for fast reinterpretting */
 template<typename fp_T>
-struct Sample_ {
+struct alignas(UE::Math::TVector4<fp_T>) Sample_ {
 	ASSERT_FP_TYPE(fp_T);
 	union {
 		struct {
@@ -51,10 +52,86 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(
 )
 
 
+template<typename T, size_t blocksize = sizeof(T), bool B_endian = true>
+static std::unique_ptr<char[]> hexify(const T* data, const size_t items = 1U) {
+	static_assert(blocksize > 0, "Blocksize must be at least 1!");
+	static constexpr char const* _hex = "0123456789ABCDEF";
+	static constexpr size_t unit_size = sizeof(T);
+	const size_t
+		raw_len = unit_size * items,
+		blocks = raw_len / blocksize,
+		chunksize = blocksize * 2 + 1,
+		len = chunksize * blocks;	// raw space times 2 hex digits per byte + 1 char space for each block + null termination - 1 since last block doesnt need space
+	char* hex = new char[len];
+	const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data);
+	for (size_t i = 0; i < blocks; i++) {
+		for (size_t b = 0; b < blocksize; b++) {
+			const uint8_t byte = bytes[i * blocksize + b];	// NOTE: bits within each byte are big-endian
+			if constexpr (B_endian) {    // big endian byte order (in this case, per-block)
+				hex[i * chunksize + (blocksize - b - 1) * 2 + 0] = _hex[(byte >> 4)];   // upper 4 bits
+				hex[i * chunksize + (blocksize - b - 1) * 2 + 1] = _hex[(byte & 0xF)];	// lower 4 bits
+			}
+			else {
+				hex[i * chunksize + b * 2 + 0] = _hex[(byte >> 4)];	    // upper 4 bits
+				hex[i * chunksize + b * 2 + 1] = _hex[(byte & 0xF)];	// lower 4 bits
+			}
+		}
+		hex[i * chunksize + blocksize * 2] = ' ';
+	}
+	hex[len - 1] = '\0';
+	return std::unique_ptr<char[]>(hex);
+}
+//static inline char* hexify(const void* data, size_t len, char* hex) {
+//	static constexpr char const* _hex = "0123456789ABCDEF";
+//	for (size_t i = 0; i < len; i++) {
+//		const uint8_t v = reinterpret_cast<const uint8_t*>(data)[i];
+//		hex[2 * i + 0] = _hex[v & 0xF];
+//		hex[2 * i + 1] = _hex[v >> 4];
+//	}
+//	return hex;
+//}
+
+template<
+	typename v_T,
+	typename a_T,
+	typename alloc_T = std::allocator<v_T>>
+static bool memSwap(std::vector<v_T, alloc_T>& std_vec, TArray<a_T>& ue_arr) {
+	static constexpr bool valid_destruct = std::is_trivially_destructible<v_T>::value && std::is_trivially_destructible<a_T>::value;
+	static constexpr bool valid_memory = sizeof(v_T) == sizeof(a_T)/* && alignof(v_T) == alignof(a_T)*/;	// alignment only matters if it is larger than the size?
+	static_assert(valid_destruct, "Base types must be trivially destructible or else they won't be cleaned up correctly after swapping!");
+	static_assert(valid_memory, "Base types must have similar memory layouts for successful swapping!");
+	if constexpr (valid_destruct && valid_memory) {
+		uintptr_t* std_vec_active_ptr = reinterpret_cast<uintptr_t*>(&std_vec);
+		uintptr_t* ue_arr_active_ptr = reinterpret_cast<uintptr_t*>(&ue_arr);
+		uintptr_t	// uint64_t
+			std_vec_buff_start = std_vec_active_ptr[0],
+			std_vec_buff_elem_end = std_vec_active_ptr[1],
+			std_vec_buff_cap_end = std_vec_active_ptr[2],
+			ue_arr_buff_start = ue_arr_active_ptr[0];
+		uint32_t
+			ue_arr_buff_elem_num = reinterpret_cast<uint32_t*>(ue_arr_active_ptr + 1)[0],
+			ue_arr_buff_cap_num = reinterpret_cast<uint32_t*>(ue_arr_active_ptr + 1)[1];
+		std_vec_active_ptr[0] = ue_arr_buff_start;
+		std_vec_active_ptr[1] = reinterpret_cast<uintptr_t>(reinterpret_cast<a_T*>(ue_arr_buff_start) + ue_arr_buff_elem_num);	// size
+		std_vec_active_ptr[2] = reinterpret_cast<uintptr_t>(reinterpret_cast<a_T*>(ue_arr_buff_start) + ue_arr_buff_cap_num);	// capacity
+		ue_arr_active_ptr[0] = std_vec_buff_start;
+		reinterpret_cast<uint32_t*>(ue_arr_active_ptr + 1)[0] = reinterpret_cast<v_T*>(std_vec_buff_elem_end) - reinterpret_cast<v_T*>(std_vec_buff_start);
+		reinterpret_cast<uint32_t*>(ue_arr_active_ptr + 1)[1] = reinterpret_cast<v_T*>(std_vec_buff_cap_end) - reinterpret_cast<v_T*>(std_vec_buff_start);
+		return true;
+	}
+	return false;
+}
+template<
+	typename v_T,
+	typename a_T,
+	typename alloc_T = std::allocator<v_T>>
+	inline static bool memSwap(TArray<a_T>& ue_arr, std::vector<v_T, alloc_T>& std_vec) {
+	return memSwap<v_T, a_T, alloc_T>(std_vec, ue_arr);
+}
 
 static FString run_tests() {
 	FString logs{};
-	pcl::PointCloud<FSample> cloud;
+	/*pcl::PointCloud<FSample> cloud;
 	if(pcl::io::loadPCDFile<FSample>("C:\\Users\\Hoodi\\Downloads\\Untitled_Scan_15_55_17.pcd", cloud) == 0) {
 		logs += FString::Printf(TEXT("Successfully loaded PCD file: %d total points.\n"), cloud.points.size());
 	} else {
@@ -73,9 +150,126 @@ static FString run_tests() {
 			(a.i == b.W)
 		);
 	}
-	logs += FString::Printf(TEXT("Total reinterpretation equality: %d, total scanned: %d \n"), errors, i);
+	logs += FString::Printf(TEXT("Total reinterpretation equality: %d, total scanned: %d \n"), errors, i);*/
+
+
+
+	////uint8_t* vars = new uint8_t[100];
+	//std::vector<uint8_t> vec{ { 1, 2, 50, 45, 2, 6 } };
+	////vec.assign(vars, vars + 100);
+	//TArray<uint8_t> tarr{ { 7, 8, 9, 72, 4 } };
+	////tarr.Append(vars, 100);
+
+	///*std::uintptr_t
+	//	vd = reinterpret_cast<std::uintptr_t>(vec.data()),
+	//	td = reinterpret_cast<std::uintptr_t>(tarr.GetData());*/
+
+	////std::unique_ptr<char[]> buff = hexify(vars, 100);
+	//std::unique_ptr<char[]> vec_hex = hexify<std::vector<uint8_t>, 8, true>(&vec);
+	//std::unique_ptr<char[]> tarr_hex = hexify<TArray<uint8_t>, 4, true>(&tarr);
+	//memSwap(vec, tarr);
+	//std::unique_ptr<char[]> vec_hex_swap = hexify<std::vector<uint8_t>, 8, true>(&vec);
+	//std::unique_ptr<char[]> tarr_hex_swap = hexify<TArray<uint8_t>, 4, true>(&tarr);
+
+	//logs += FString::Printf(
+	//	TEXT("Vector (PRE): %s, \tTArray (PRE): %s, \tVector (POST): %s, \tTArray (POST): %s\t\t"),
+	//	ANSI_TO_TCHAR(vec_hex.get()), ANSI_TO_TCHAR(tarr_hex.get()),
+	//	ANSI_TO_TCHAR(vec_hex_swap.get()), ANSI_TO_TCHAR(tarr_hex_swap.get())
+	//);
+	//logs += FString::Printf(
+	//	TEXT("Vector size: %d, TArray size: %d"),
+	//	vec.size(),
+	//	tarr.Num()
+	//);
+
+	std::vector<FSample> samples{ { FSample{4, 5, 3, 4}, FSample{1, 2, 4, 54}, FSample{7, 4, 7, 3} } };
+	TArray<FVector4> vectors{ { FVector4{1, 1, 1, 1}, FVector4{2, 2, 2, 2} } };
+	std::unique_ptr<char[]> vec_hex = hexify(&samples);
+	std::unique_ptr<char[]> arr_hex = hexify(&vectors);
+	memSwap(samples, vectors);
+	std::unique_ptr<char[]> vec_hex_post = hexify(&samples);
+	std::unique_ptr<char[]> arr_hex_post = hexify(&vectors);
+	logs += FString::Printf(
+		TEXT("Vector (PRE): %s, \tTArray (PRE): %s, \tVector (POST): %s, \tTArray (POST): %s\t\t"),
+		ANSI_TO_TCHAR(vec_hex.get()), ANSI_TO_TCHAR(arr_hex.get()),
+		ANSI_TO_TCHAR(vec_hex_post.get()), ANSI_TO_TCHAR(arr_hex_post.get())
+	);
+	logs += FString::Printf(
+		TEXT("Vector size: %d, TArray size: %d"),
+		samples.size(),
+		vectors.Num()
+	);
+
+	/*std::unique_ptr<char[]> vd_hex = hexify(&vd);
+	std::unique_ptr<char[]> td_hex = hexify(&td);
+	logs += FString::Printf(
+		TEXT("Raw Buffer: %s,\tVector >> Memory: %s, Data Ptr: %s, Size: %d, Cap: %d,\tTArray >> Memory: %s, Data Ptr: %s, Size: %d, Cap: %d"),
+		ANSI_TO_TCHAR(buff.get()),
+		ANSI_TO_TCHAR(vec_hex.get()), ANSI_TO_TCHAR(vd_hex.get()), vec.size(), vec.capacity(),
+		ANSI_TO_TCHAR(tarr_hex.get()), ANSI_TO_TCHAR(td_hex.get()), tarr.Num(), tarr.Max()
+	);*/
+
 	return logs;
 }
+// From tests >>
+// Vector: U64(START "data()"), U64(END "end()"), U64(CAP_END)			--> total 24 bytes
+// TArray : U64(START "Data()"), U32(LEN "Num()"), U32(CAP_LEN "Max()") --> total 16 bytes
+
+//template<typename base_T>
+//static std::unique_ptr<std::vector<base_T>> genStdVec(const base_T* data, const size_t size) {
+//	uint64_t* buffer = new uint64_t[3];
+//	buffer[0] = reinterpret_cast<std::uintptr_t>(data);
+//	buffer[1] = buffer[2] = buffer[0] + size * sizeof(base_T);
+//	return std::unique_ptr<std::vector<base_T>>(buffer);
+//}
+//template<typename base_T, typename alloc_T = std::allocator<base_T>>
+//static size_t replaceData(std::vector<base_T, alloc_T>& std_vec, base_T** raw) {
+//	std::uintptr_t* ptr = reinterpret_cast<std::uintptr_t*>(&std_vec);
+//	*raw = reinterpret_cast<base_T*>(ptr[0]);
+//	size_t len = ptr[1];
+//	ptr[0] = ptr[1] = ptr[0] = 0;
+//	return len;
+//}
+//template<typename base_T>
+//static size_t replaceData(TArray<base_T>& tarr, base_T** raw) {
+//	std::uintptr_t* ptr = reinterpret_cast<std::uintptr_t*>(&tarr);
+//	*raw = reinterpret_cast<base_T*>(ptr[0]);
+//}
+
+
+
+//template<typename reinterpret_T>
+//struct ReinterpretBuffer {
+//
+//	inline ReinterpretBuffer() :
+//		data(new uint8_t[SIZE])
+//	{}
+//	template<typename T>
+//	inline ReinterpretBuffer(T* data) :
+//		data(reinterpret_cast<uint8_t*>(data))
+//	{}
+//	~ReinterpretBuffer() {
+//		delete[] this->data;
+//	}
+//
+//	template<typename _reinterpret_T = reinterpret_T>
+//	inline volatile const _reinterpret_T* get() {
+//		static_assert(sizeof(_reinterpret_T) == SIZE, "Reinterpreted type must match memory signature of base datatype");
+//		return reinterpret_cast<const _reinterpret_T*>(this->data);
+//	}
+//	template<typename _reinterpret_T = reinterpret_T>
+//	inline const _reinterpret_T& operator*() const {
+//		return *this->get<_reinterpret_T>();
+//	}
+//	template<typename _reinterpret_T = reinterpret_T>
+//	inline volatile const _reinterpret_T* operator->() const {
+//		return this->get<_reinterpret_T>();
+//	}
+//
+//	constexpr size_t SIZE{ sizeof(reinterpret_T) };
+//	const uint8_t* data;
+//
+//};
 
 
 struct Tracing {
@@ -206,8 +400,11 @@ struct Tracing {
 
 
 
+DECLARE_STATS_GROUP(TEXT("LidarSimulation"), STATGROUP_LidarSim, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("Bulk Scan"), STAT_BulkScan, STATGROUP_LidarSim);
 
 DEFINE_LOG_CATEGORY(LidarSimComponent);
+
 
 void ULidarSimulationComponent::ConvertToRadians(TArray<float>& thetas, TArray<float>& phis) {
 	for (int i = 0; i < thetas.Num(); i++) {
@@ -222,8 +419,8 @@ void ULidarSimulationComponent::GenerateDirections(const TArray<float>& thetas, 
 	Tracing::sphericalVectorProduct<float, double>(thetas, phis, directions);
 }
 
-double ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range) {
-	const double a = FPlatformTime::Seconds();
+void ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range) {
+	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
 	if (hits.Num() != 0) {
 		UE_LOG(LidarSimComponent, Warning, TEXT("Hits output array contains prexisting elements."));
 	}
@@ -232,10 +429,9 @@ double ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArr
 			hits.Emplace(std::move(pos), (double)i);
 		}
 	);
-	return FPlatformTime::Seconds() - a;
 }
-double ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range) {
-	const double a = FPlatformTime::Seconds();
+void ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range) {
+	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
 	if (positions.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
 	if (intensities.Num() != 0) {				UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
 	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
@@ -245,10 +441,9 @@ double ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArr
 			intensities.Add(i);
 		}
 	);
-	return FPlatformTime::Seconds() - a;
 }
-double ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray<FLinearColor>& positions, TArray<uint8>& generated_colors, const float max_range, const FColor intensity_albedo) {
-	const double a = FPlatformTime::Seconds();
+void ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray<FLinearColor>& positions, TArray<uint8>& generated_colors, const float max_range, const FColor intensity_albedo) {
+	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
 	if (positions.Num() != 0) {							UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
 	if (generated_colors.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
 	if (positions.Num() != generated_colors.Num()) {	UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
@@ -261,7 +456,6 @@ double ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArr
 			generated_colors.Add(i * intensity_albedo.A);
 		}
 	);
-	return FPlatformTime::Seconds() - a;
 }
 
 double ULidarSimulationComponent::SavePointsToFile(const TArray<FVector4>& points, const FString& fname) {

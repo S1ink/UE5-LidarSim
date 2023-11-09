@@ -25,19 +25,19 @@ public:
 	void GenerateDirections(const TArray<float>& thetas, const TArray<float>& phis, UPARAM(ref) TArray<FVector>& directions);
 
 	UFUNCTION(DisplayName = "LidarSim Initiate Scan (Vector4)", BlueprintCallable)
-	double Scan_0(
+	void Scan_0(
 		const TArray<FVector>& directions,
 		UPARAM(ref) TArray<FVector4>& hits,
 		const float max_range = 10e2f);
 
 	UFUNCTION(DisplayName = "LidarSim Initate Scan (Vec3 + Intensity)", BlueprintCallable)
-	double Scan_1(
+	void Scan_1(
 		const TArray<FVector>& directions,
 		UPARAM(ref) TArray<FVector>& positions, UPARAM(ref) TArray<float>& intensities,
 		const float max_range = 10e2f);
 
 	UFUNCTION(DisplayName = "LidarSim Initiate Scan (LinearColor + uint8) >> For PCR", BlueprintCallable)
-	double Scan_2(
+	void Scan_2(
 		const TArray<FVector>& directions,
 		UPARAM(ref) TArray<FLinearColor>& positions, UPARAM(ref) TArray<uint8>& generated_colors,
 		const float max_range = 10e2f, const FColor intensity_albedo = FColor::White);
@@ -47,3 +47,18 @@ public:
 
 };
 
+
+//UCLASS(ClassGroup = Simulation, meta = (BlueprintSpawnableComponent))
+//class LIDARSIM_API UPCFilterBuffer {
+//
+//	GENERATED_BODY();
+//
+//public:
+//	UPCFilterBuffer(const FObjectInitializer& init) {}
+//	~UPCFilterBuffer() {}
+//
+//
+//private:
+//
+//
+//};

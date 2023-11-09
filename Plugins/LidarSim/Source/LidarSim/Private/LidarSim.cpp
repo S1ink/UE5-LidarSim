@@ -9,11 +9,11 @@ THIRD_PARTY_INCLUDES_START
 #include <pcl/point_types.h>
 #endif
 THIRD_PARTY_INCLUDES_END
-//#include "PCLHelper.h"
+#include "PCLHelper.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LidarSim, Log, All);
 DEFINE_LOG_CATEGORY(LidarSim);
-//#define RUN_TESTS
+#define RUN_TESTS
 
 
 void FLidarSimModule::StartupModule() {
@@ -28,7 +28,7 @@ void FLidarSimModule::StartupModule() {
 	}
 #endif
 #ifdef RUN_TESTS
-	UE_LOG(PCL, Log, TEXT("%s"), *run_tests());
+	UE_LOG(LidarSim, Log, TEXT("%s"), *run_tests());
 #endif
 
 }
