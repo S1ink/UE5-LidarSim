@@ -14,21 +14,22 @@ public class PCLLibrary : ModuleRules
 		{
 
 			string
-				pcl_bin			= @"D:\Programs\PCL 1.13.1\bin",
-				pcl_include		= @"D:\Programs\PCL 1.13.1\include\pcl-1.13",
-                pcl_lib			= @"D:\Programs\PCL 1.13.1\lib",
-				boost_include	= @"D:\Programs\PCL 1.13.1\3rdParty\Boost\include\boost-1_82",
-				boost_lib		= @"D:\Programs\PCL 1.13.1\3rdParty\Boost\lib",
-				eigen_include	= @"D:\Programs\PCL 1.13.1\3rdParty\Eigen\eigen3",
-                flann_bin		= @"D:\Programs\PCL 1.13.1\3rdParty\FLANN\bin",
-				flann_include	= @"D:\Programs\PCL 1.13.1\3rdParty\FLANN\include",
-				flann_lib		= @"D:\Programs\PCL 1.13.1\3rdParty\FLANN\lib",
-				qhull_bin		= @"D:\Programs\PCL 1.13.1\3rdParty\Qhull\bin",
-				qhull_include	= @"D:\Programs\PCL 1.13.1\3rdParty\Qhull\include",
-				qhull_lib		= @"D:\Programs\PCL 1.13.1\3rdParty\Qhull\lib",
-				vtk_bin			= @"D:\Programs\PCL 1.13.1\3rdParty\VTK\bin",
-				vtk_include		= @"D:\Programs\PCL 1.13.1\3rdParty\VTK\include",
-                vtk_lib			= @"D:\Programs\PCL 1.13.1\3rdParty\VTK\lib";
+				pcl_install		= @"D:\Programs\PCL 1.13.1",
+				pcl_bin			= pcl_install + @"\bin",
+				pcl_include		= pcl_install + @"\include\pcl-1.13",
+                pcl_lib			= pcl_install + @"\lib",
+				boost_include	= pcl_install + @"\3rdParty\Boost\include\boost-1_82",
+				boost_lib		= pcl_install + @"\3rdParty\Boost\lib",
+				eigen_include	= pcl_install + @"\3rdParty\Eigen\eigen3",
+                flann_bin		= pcl_install + @"\3rdParty\FLANN\bin",
+				flann_include	= pcl_install + @"\3rdParty\FLANN\include",
+				flann_lib		= pcl_install + @"\3rdParty\FLANN\lib",
+				qhull_bin		= pcl_install + @"\3rdParty\Qhull\bin",
+				qhull_include	= pcl_install + @"\3rdParty\Qhull\include",
+				qhull_lib		= pcl_install + @"\3rdParty\Qhull\lib",
+				vtk_bin			= pcl_install + @"\3rdParty\VTK\bin",
+				vtk_include		= pcl_install + @"\3rdParty\VTK\include",
+                vtk_lib			= pcl_install + @"\3rdParty\VTK\lib";
 			string[]
 				include_dirs	= { pcl_include, boost_include, eigen_include, flann_include, qhull_include, vtk_include },
 				dll_dirs		= { pcl_bin, flann_bin, qhull_bin, vtk_bin },

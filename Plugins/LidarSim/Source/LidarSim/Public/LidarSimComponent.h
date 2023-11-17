@@ -50,7 +50,7 @@ public:
 	UFUNCTION(DisplayName = "LidarSim Segment Plane", BlueprintCallable)
 	void SegmentPlane(
 		UPARAM(ref) const TArray<FLinearColor>& points, UPARAM(ref) TArray<int32>& inlier_indices, UPARAM(ref) FVector4& plane_fit,
-		const FVector3f& target_plane_normal, const double fit_distance_threshold = 1.0, const double fit_theta_threshold = 0.1);
+		UPARAM(ref) const FVector3f& target_plane_normal, const double fit_distance_threshold = 1.0, const double fit_theta_threshold = 0.1);
 
 	/*UFUNCTION(DisplayName = "LidarSim Segment Plane", BlueprintCallable)
 	void SegmentPlane(
