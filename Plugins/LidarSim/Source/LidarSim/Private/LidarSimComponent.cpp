@@ -355,10 +355,12 @@ void ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray
 	if (positions.Num() != 0) {							UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
 	if (generated_colors.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
 	if (positions.Num() != generated_colors.Num()) {	UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
-	constexpr float intensity = 1.f;
+	constexpr float
+		intensity = 1.f,
+		noise_scale = 2e-3f;
 	scan<double>(this->GetOwner(), directions, max_range,
 		[&positions, &generated_colors, &intensity_albedo](const FHitResult& result) {
-			positions.Emplace(std::move(result.Location));
+			positions.Emplace(result.Location + (FMath::VRand() * (noise_scale * result.Distance)));
 			generated_colors.Add(intensity * intensity_albedo.R);	// there is probably a more optimal way to add 4 units to the array
 			generated_colors.Add(intensity * intensity_albedo.G);
 			generated_colors.Add(intensity * intensity_albedo.B);
@@ -388,49 +390,33 @@ void ULidarSimulationComponent::SegmentPlane(
 	using namespace mem_utils;
 	using namespace pcl_api_utils;
 
-	/*UE_LOG(LidarSimComponent, Log, TEXT("[PRE] InOut Points TArray Memory: 0x%s"), ANSI_TO_TCHAR(hexify(&points).get()));
-	UE_LOG(LidarSimComponent, Log, TEXT("[PRE] InOut Inliers TArray Memory: 0x%s"), ANSI_TO_TCHAR(hexify(&inlier_indices).get()));*/
-
 	pcl::ModelCoefficients::Ptr fit_coeffs{ new pcl::ModelCoefficients };
 	pcl::PointIndices::Ptr inliers{ new pcl::PointIndices };	// both these fail to be deleted on function scope exit ???
-	{
-		pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
-		pcl::SACSegmentation<pcl::PointXYZ> seg{};
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
+	pcl::SACSegmentation<pcl::PointXYZ> seg{};
 
-		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
-		/*UE_LOG(LidarSimComponent, Log, TEXT("Memswapped PCloud has %d points."), cloud->points.size());*/
-		segmodel_perpendicular(
-			seg, fit_distance_threshold, fit_theta_threshold,
-			reinterpret_cast<const Eigen::Vector3f&>(target_plane_normal));
-		//filter_single(cloud, seg, inliers, fit_coeffs);
-		seg.setInputCloud(cloud);
-		seg.segment(*inliers, *fit_coeffs);
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
+	segmodel_perpendicular(
+		seg, fit_distance_threshold, fit_theta_threshold,
+		reinterpret_cast<const Eigen::Vector3f&>(target_plane_normal));
+	filter_single(cloud, seg, *inliers, *fit_coeffs);
+	/*seg.setInputCloud(cloud);
+	seg.segment(*inliers, *fit_coeffs);*/
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
 
-		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
-
-		inlier_indices.SetNum(0);
-		inlier_indices.Append(inliers->indices.data(), inliers->indices.size());
-		if (fit_coeffs->values.size() >= 4) {
-			plane_fit = FVector4{
-				fit_coeffs->values[0],
-				fit_coeffs->values[1],
-				fit_coeffs->values[2],
-				fit_coeffs->values[3],
-			};
-		}
+	/*inlier_indices.SetNum(0);
+	inlier_indices.Append(inliers->indices.data(), inliers->indices.size());*/
+	memSwap(inliers->indices, inlier_indices);
+	if (fit_coeffs->values.size() >= 4) {
+		plane_fit = FVector4{
+			fit_coeffs->values[0],
+			fit_coeffs->values[1],
+			fit_coeffs->values[2],
+			fit_coeffs->values[3],
+		};
 	}
-	UE_LOG(LidarSimComponent, Log, TEXT("RAN FILTER ITERATION!?"));
-	//UE_LOG(LidarSimComponent, Log, TEXT("Filter: Completed? -- Inliers: %d, Fit params: %d"), inliers.indices.size(), fit_coeffs.values.size());
-	//memSwap(inliers.indices, inlier_indices);
-	//UE_LOG(LidarSimComponent, Log, TEXT("Memswap #2: Output inliers array has %d indices."), inlier_indices.Num());
-	
-	/*UE_LOG(LidarSimComponent, Log, TEXT("Plane fit: { %f, %f, %f, %f }"), plane_fit.X, plane_fit.Y, plane_fit.Z, plane_fit.W);*/
-	//UE_LOG(LidarSimComponent, Log, TEXT("Memswap #3: Temporary buffer has %d points."), cloud->points.size());
-
-	/*UE_LOG(LidarSimComponent, Log, TEXT("Temporary PCloud Vector Memory: 0x%s"), ANSI_TO_TCHAR(hexify(&cloud->points).get()));
-	UE_LOG(LidarSimComponent, Log, TEXT("InOut Points TArray Memory: 0x%s"), ANSI_TO_TCHAR(hexify(&points).get()));
-	UE_LOG(LidarSimComponent, Log, TEXT("Temporary Inliers Vector Memory: 0x%s"), ANSI_TO_TCHAR(hexify(&inliers.indices).get()));
-	UE_LOG(LidarSimComponent, Log, TEXT("InOut Inliers TArray Memory: 0x%s"), ANSI_TO_TCHAR(hexify(&inlier_indices).get()));*/
+	/*fit_coeffs->values = std::vector<float>();
+	inliers->indices = std::vector<int32_t>();*/
 }
 
 void ULidarSimulationComponent::RecolorPoints(
