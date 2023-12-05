@@ -96,7 +96,9 @@ namespace pcl
         */
       StatisticalOutlierRemoval (bool extract_removed_indices = false) :
         FilterIndices<PointT> (extract_removed_indices),
-        searcher_ ()
+        searcher_ (),
+        mean_k_ (1),
+        std_mul_ (0.0)
       {
         filter_name_ = "StatisticalOutlierRemoval";
       }
@@ -140,12 +142,6 @@ namespace pcl
         return (std_mul_);
       }
 
-      /** \brief Provide a pointer to the search object.
-        * Calling this is optional. If not called, the search method will be chosen automatically.
-        * \param[in] searcher a pointer to the spatial search object.
-        */
-      inline void
-      setSearchMethod (const SearcherPtr &searcher) { searcher_ = searcher; }
     protected:
       using PCLBase<PointT>::input_;
       using PCLBase<PointT>::indices_;
@@ -177,11 +173,11 @@ namespace pcl
       SearcherPtr searcher_;
 
       /** \brief The number of points to use for mean distance estimation. */
-      int mean_k_{1};
+      int mean_k_;
 
       /** \brief Standard deviations threshold (i.e., points outside of 
         * \f$ \mu \pm \sigma \cdot std\_mul \f$ will be marked as outliers). */
-      double std_mul_{0.0};
+      double std_mul_;
   };
 
   /** \brief @b StatisticalOutlierRemoval uses point neighborhood statistics to filter outlier data. For more
@@ -212,7 +208,8 @@ namespace pcl
     public:
       /** \brief Empty constructor. */
       StatisticalOutlierRemoval (bool extract_removed_indices = false) :
-        FilterIndices<pcl::PCLPointCloud2>::FilterIndices (extract_removed_indices)
+        FilterIndices<pcl::PCLPointCloud2>::FilterIndices (extract_removed_indices), mean_k_ (2),
+        std_mul_ (0.0)
       {
         filter_name_ = "StatisticalOutlierRemoval";
       }
@@ -254,12 +251,12 @@ namespace pcl
 
     protected:
       /** \brief The number of points to use for mean distance estimation. */
-      int mean_k_{2};
+      int mean_k_;
 
       /** \brief Standard deviations threshold (i.e., points outside of 
         * \f$ \mu \pm \sigma \cdot std\_mul \f$ will be marked as outliers). 
         */
-      double std_mul_{0.0};
+      double std_mul_;
 
       /** \brief A pointer to the spatial search object. */
       KdTreePtr tree_;

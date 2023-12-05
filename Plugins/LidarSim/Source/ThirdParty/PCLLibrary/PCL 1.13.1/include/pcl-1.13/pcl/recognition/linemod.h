@@ -55,7 +55,10 @@ namespace pcl
   {
     public:
       /** \brief Constructor. */
-      EnergyMaps () = default;
+      EnergyMaps () : width_ (0), height_ (0), nr_bins_ (0)
+      {
+      }
+
       /** \brief Destructor. */
       virtual ~EnergyMaps () = default;
 
@@ -179,11 +182,11 @@ namespace pcl
 
     private:
       /** \brief The width of the energy maps. */
-      std::size_t width_{0};
+      std::size_t width_;
       /** \brief The height of the energy maps. */
-      std::size_t height_{0};
+      std::size_t height_;
       /** \brief The number of quantization bins (== the number of internally stored energy maps). */
-      std::size_t nr_bins_{0};
+      std::size_t nr_bins_;
       /** \brief Storage for the energy maps. */
       std::vector<unsigned char*> maps_;
   };
@@ -195,7 +198,9 @@ namespace pcl
   {
     public:
       /** \brief Constructor. */
-      LinearizedMaps () = default;
+      LinearizedMaps () : width_ (0), height_ (0), mem_width_ (0), mem_height_ (0), step_size_ (0)
+      {
+      }
       
       /** \brief Destructor. */
       virtual ~LinearizedMaps () = default;
@@ -285,15 +290,15 @@ namespace pcl
 
     private:
       /** \brief the original width of the data represented by the map. */
-      std::size_t width_{0};
+      std::size_t width_;
       /** \brief the original height of the data represented by the map. */
-      std::size_t height_{0};
+      std::size_t height_;
       /** \brief the actual width of the linearized map. */
-      std::size_t mem_width_{0};
+      std::size_t mem_width_;
       /** \brief the actual height of the linearized map. */
-      std::size_t mem_height_{0};
+      std::size_t mem_height_;
       /** \brief the step-size used for sampling the original data. */
-      std::size_t step_size_{0};
+      std::size_t step_size_;
       /** \brief a vector containing all the linearized maps. */
       std::vector<unsigned char*> maps_;
   };
@@ -304,18 +309,18 @@ namespace pcl
   struct PCL_EXPORTS LINEMODDetection
   {
     /** \brief Constructor. */
-    LINEMODDetection () = default;
+    LINEMODDetection () : x (0), y (0), template_id (0), score (0.0f), scale (1.0f) {}
 
     /** \brief x-position of the detection. */
-    int x{0};
+    int x;
     /** \brief y-position of the detection. */
-    int y{0};
+    int y;
     /** \brief ID of the detected template. */
-    int template_id{0};
+    int template_id;
     /** \brief score of the detection. */
-    float score{0.0f};
+    float score;
     /** \brief scale at which the template was detected. */
-    float scale{1.0f};
+    float scale;
   };
 
   /**
@@ -456,13 +461,13 @@ namespace pcl
 
     private:
       /** template response threshold */
-      float template_threshold_{0.75f};
+      float template_threshold_;
       /** states whether non-max-suppression on detections is enabled or not */
-      bool use_non_max_suppression_{false};
+      bool use_non_max_suppression_;
       /** states whether to return an averaged detection */
-      bool average_detections_{false};
+      bool average_detections_;
       /** template storage */
-      std::vector<SparseQuantizedMultiModTemplate> templates_{};
+      std::vector<SparseQuantizedMultiModTemplate> templates_;
   };
 
 }

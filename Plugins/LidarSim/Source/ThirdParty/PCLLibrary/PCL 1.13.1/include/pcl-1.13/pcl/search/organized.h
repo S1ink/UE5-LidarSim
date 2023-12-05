@@ -52,14 +52,10 @@ namespace pcl
 {
   namespace search
   {
-    /** \brief OrganizedNeighbor is a class for optimized nearest neighbor search in
-     * organized projectable point clouds, for instance from Time-Of-Flight cameras or
-     * stereo cameras. Note that rotating LIDARs may output organized clouds, but are
-     * not projectable via a pinhole camera model into two dimensions and thus will
-     * generally not work with this class.
-     * \author Radu B. Rusu, Julius Kammerl, Suat Gedikli, Koen Buys
-     * \ingroup search
-     */
+    /** \brief OrganizedNeighbor is a class for optimized nearest neighbor search in organized point clouds.
+      * \author Radu B. Rusu, Julius Kammerl, Suat Gedikli, Koen Buys
+      * \ingroup search
+      */
     template<typename PointT>
     class OrganizedNeighbor : public pcl::search::Search<PointT>
     {
@@ -125,7 +121,7 @@ namespace pcl
           * \param[in] cloud the const boost shared pointer to a PointCloud message
           * \param[in] indices the const boost shared pointer to PointIndices
           */
-        bool
+        void
         setInputCloud (const PointCloudConstPtr& cloud, const IndicesConstPtr &indices = IndicesConstPtr ()) override
         {
           input_ = cloud;
@@ -143,7 +139,7 @@ namespace pcl
           else
             mask_.assign (input_->size (), 1);
 
-          return estimateProjectionMatrix () && isValid ();
+          estimateProjectionMatrix ();
         }
 
         /** \brief Search for all neighbors of query point that are within a given radius.
@@ -164,7 +160,7 @@ namespace pcl
                       unsigned int max_nn = 0) const override;
 
         /** \brief estimated the projection matrix from the input cloud. */
-        bool
+        void 
         estimateProjectionMatrix ();
 
          /** \brief Search for the k-nearest neighbors for a given query point.

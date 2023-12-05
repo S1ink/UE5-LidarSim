@@ -115,7 +115,11 @@ namespace pcl
       using PointIndicesConstPtr = PointIndices::ConstPtr;
 
       /** \brief Empty constructor. */
-      ExtractPolygonalPrismData () = default;
+      ExtractPolygonalPrismData () : planar_hull_ (), min_pts_hull_ (3), 
+                                     height_limit_min_ (0),
+                                     height_limit_max_(std::numeric_limits<float>::max()),
+                                     vpx_ (0), vpy_ (0), vpz_ (0)
+      {};
 
       /** \brief Provide a pointer to the input planar hull dataset.
         * \note Please see the example in the class description for how to obtain this.
@@ -183,23 +187,23 @@ namespace pcl
 
     protected:
       /** \brief A pointer to the input planar hull dataset. */
-      PointCloudConstPtr planar_hull_{nullptr};
+      PointCloudConstPtr planar_hull_;
 
       /** \brief The minimum number of points needed on the convex hull. */
-      int min_pts_hull_{3};
+      int min_pts_hull_;
 
       /** \brief The minimum allowed height (distance to the model) a point
         * will be considered from. 
         */
-      double height_limit_min_{0.0};
+      double height_limit_min_;
 
       /** \brief The maximum allowed height (distance to the model) a point
         * will be considered from. 
         */
-      double height_limit_max_{std::numeric_limits<float>::max()};
+      double height_limit_max_;
 
       /** \brief Values describing the data acquisition viewpoint. Default: 0,0,0. */
-      float vpx_{0}, vpy_{0}, vpz_{0};
+      float vpx_, vpy_, vpz_;
 
       /** \brief Class getName method. */
       virtual std::string 

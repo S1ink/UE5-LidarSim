@@ -74,11 +74,13 @@ namespace pcl
       using PointCloudOut = typename Feature<PointInT, PointOutT>::PointCloudOut;
 
       /** \brief Constructor. */
-      CRHEstimation ()
+      CRHEstimation () :
+        vpx_ (0), vpy_ (0), vpz_ (0), nbins_ (90)
       {
         k_ = 1;
         feature_name_ = "CRHEstimation";
       }
+      ;
 
       /** \brief Set the viewpoint.
        * \param[in] vpx the X coordinate of the viewpoint
@@ -116,10 +118,10 @@ namespace pcl
       /** \brief Values describing the viewpoint ("pinhole" camera model assumed). 
        * By default, the viewpoint is set to 0,0,0.
        */
-      float vpx_{0.0f}, vpy_{0.0f}, vpz_{0.0f};
+      float vpx_, vpy_, vpz_;
 
       /** \brief Number of bins, this should match the Output type */
-      int nbins_{90};
+      int nbins_;
 
       /** \brief Centroid to be used */
       Eigen::Vector4f centroid_;

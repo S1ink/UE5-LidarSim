@@ -284,7 +284,6 @@ namespace pcl
         // If no error, convert the data
         if (res == 0)
           pcl::fromPCLPointCloud2 (blob, cloud);
-
         return (res);
       }
 
@@ -298,7 +297,7 @@ namespace pcl
   class PCL_EXPORTS PCDWriter : public FileWriter
   {
     public:
-      PCDWriter() = default;
+      PCDWriter() : map_synchronization_(false) {}
       ~PCDWriter() override = default;
 
       /** \brief Set whether mmap() synchornization via msync() is desired before munmap() calls.
@@ -615,7 +614,7 @@ namespace pcl
 
     private:
       /** \brief Set to true if msync() should be called before munmap(). Prevents data loss on NFS systems. */
-      bool map_synchronization_{false};
+      bool map_synchronization_;
   };
 
   namespace io

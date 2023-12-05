@@ -115,22 +115,25 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
   {
     PCL_WARN ("[pcl::PCDWriter::writeBinary] Input point cloud has no data!\n");
   }
+  int data_idx = 0;
   std::ostringstream oss;
   oss << generateHeader<PointT> (cloud) << "DATA binary\n";
   oss.flush ();
-  const auto data_idx = static_cast<unsigned int> (oss.tellp ());
+  data_idx = static_cast<int> (oss.tellp ());
 
 #ifdef _WIN32
   HANDLE h_native_file = CreateFileA (file_name.c_str (), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
   if (h_native_file == INVALID_HANDLE_VALUE)
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during CreateFile!");
+    return (-1);
   }
 #else
   int fd = io::raw_open (file_name.c_str (), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fd < 0)
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during open!");
+    return (-1);
   }
 #endif
   // Mandatory lock file
@@ -159,17 +162,13 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
 
   // Prepare the map
 #ifdef _WIN32
-  HANDLE fm = CreateFileMappingA (h_native_file, NULL, PAGE_READWRITE, (DWORD) ((data_idx + data_size) >> 32), (DWORD) (data_idx + data_size), NULL);
+  HANDLE fm = CreateFileMappingA (h_native_file, NULL, PAGE_READWRITE, 0, (DWORD) (data_idx + data_size), NULL);
   if (fm == NULL)
   {
       throw pcl::IOException("[pcl::PCDWriter::writeBinary] Error during memory map creation ()!");
+      return (-1);
   }
   char *map = static_cast<char*>(MapViewOfFile (fm, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, data_idx + data_size));
-  if (map == NULL)
-  {
-      CloseHandle (fm);
-      throw pcl::IOException("[pcl::PCDWriter::writeBinary] Error mapping view of file!");
-  }
   CloseHandle (fm);
 
 #else
@@ -183,6 +182,7 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
                data_idx + data_size, allocate_res, errno, strerror (errno));
 
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during raw_fallocate ()!");
+    return (-1);
   }
 
   char *map = static_cast<char*> (::mmap (nullptr, data_idx + data_size, PROT_WRITE, MAP_SHARED, fd, 0));
@@ -191,6 +191,7 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
     io::raw_close (fd);
     resetLockingPermissions (file_name, file_lock);
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during mmap ()!");
+    return (-1);
   }
 #endif
 
@@ -224,6 +225,7 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
     io::raw_close (fd);
     resetLockingPermissions (file_name, file_lock);
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during munmap ()!");
+    return (-1);
   }
 #endif
   // Close file
@@ -245,22 +247,25 @@ pcl::PCDWriter::writeBinaryCompressed (const std::string &file_name,
   {
     PCL_WARN ("[pcl::PCDWriter::writeBinaryCompressed] Input point cloud has no data!\n");
   }
+  int data_idx = 0;
   std::ostringstream oss;
   oss << generateHeader<PointT> (cloud) << "DATA binary_compressed\n";
   oss.flush ();
-  const auto data_idx = static_cast<unsigned int> (oss.tellp ());
+  data_idx = static_cast<int> (oss.tellp ());
 
 #ifdef _WIN32
   HANDLE h_native_file = CreateFileA (file_name.c_str (), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
   if (h_native_file == INVALID_HANDLE_VALUE)
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeBinaryCompressed] Error during CreateFile!");
+    return (-1);
   }
 #else
   int fd = io::raw_open (file_name.c_str (), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fd < 0)
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeBinaryCompressed] Error during open!");
+    return (-1);
   }
 #endif
 
@@ -387,6 +392,7 @@ pcl::PCDWriter::writeBinaryCompressed (const std::string &file_name,
                compressed_final_size, allocate_res, errno, strerror (errno));
 
     throw pcl::IOException ("[pcl::PCDWriter::writeBinaryCompressed] Error during raw_fallocate ()!");
+    return (-1);
   }
 
   char *map = static_cast<char*> (::mmap (nullptr, compressed_final_size, PROT_WRITE, MAP_SHARED, fd, 0));
@@ -395,6 +401,7 @@ pcl::PCDWriter::writeBinaryCompressed (const std::string &file_name,
     io::raw_close (fd);
     resetLockingPermissions (file_name, file_lock);
     throw pcl::IOException ("[pcl::PCDWriter::writeBinaryCompressed] Error during mmap ()!");
+    return (-1);
   }
 #endif
 
@@ -418,6 +425,7 @@ pcl::PCDWriter::writeBinaryCompressed (const std::string &file_name,
     io::raw_close (fd);
     resetLockingPermissions (file_name, file_lock);
     throw pcl::IOException ("[pcl::PCDWriter::writeBinaryCompressed] Error during munmap ()!");
+    return (-1);
   }
 #endif
 
@@ -447,6 +455,7 @@ pcl::PCDWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
   if (cloud.width * cloud.height != cloud.size ())
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeASCII] Number of points different than width * height!");
+    return (-1);
   }
 
   std::ofstream fs;
@@ -455,6 +464,7 @@ pcl::PCDWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
   if (!fs.is_open () || fs.fail ())
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeASCII] Could not open file for writing!");
+    return (-1);
   }
   
   // Mandatory lock file
@@ -615,22 +625,25 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
   {
     PCL_WARN ("[pcl::PCDWriter::writeBinary] Input point cloud has no data or empty indices given!\n");
   }
+  int data_idx = 0;
   std::ostringstream oss;
   oss << generateHeader<PointT> (cloud, static_cast<int> (indices.size ())) << "DATA binary\n";
   oss.flush ();
-  const auto data_idx = static_cast<unsigned int> (oss.tellp ());
+  data_idx = static_cast<int> (oss.tellp ());
 
 #ifdef _WIN32
   HANDLE h_native_file = CreateFileA (file_name.c_str (), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
   if (h_native_file == INVALID_HANDLE_VALUE)
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during CreateFile!");
+    return (-1);
   }
 #else
   int fd = io::raw_open (file_name.c_str (), O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fd < 0)
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during open!");
+    return (-1);
   }
 #endif
   // Mandatory lock file
@@ -659,7 +672,7 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
 
   // Prepare the map
 #ifdef _WIN32
-  HANDLE fm = CreateFileMapping (h_native_file, NULL, PAGE_READWRITE, (DWORD) ((data_idx + data_size) >> 32), (DWORD) (data_idx + data_size), NULL);
+  HANDLE fm = CreateFileMapping (h_native_file, NULL, PAGE_READWRITE, 0, data_idx + data_size, NULL);
   char *map = static_cast<char*>(MapViewOfFile (fm, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, data_idx + data_size));
   CloseHandle (fm);
 
@@ -674,6 +687,7 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
                data_idx + data_size, allocate_res, errno, strerror (errno));
 
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during raw_fallocate ()!");
+    return (-1);
   }
 
   char *map = static_cast<char*> (::mmap (nullptr, data_idx + data_size, PROT_WRITE, MAP_SHARED, fd, 0));
@@ -682,6 +696,7 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
     io::raw_close (fd);
     resetLockingPermissions (file_name, file_lock);
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during mmap ()!");
+    return (-1);
   }
 #endif
 
@@ -715,6 +730,7 @@ pcl::PCDWriter::writeBinary (const std::string &file_name,
     io::raw_close (fd);
     resetLockingPermissions (file_name, file_lock);
     throw pcl::IOException ("[pcl::PCDWriter::writeBinary] Error during munmap ()!");
+    return (-1);
   }
 #endif
   // Close file
@@ -743,6 +759,7 @@ pcl::PCDWriter::writeASCII (const std::string &file_name,
   if (cloud.width * cloud.height != cloud.size ())
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeASCII] Number of points different than width * height!");
+    return (-1);
   }
 
   std::ofstream fs;
@@ -750,6 +767,7 @@ pcl::PCDWriter::writeASCII (const std::string &file_name,
   if (!fs.is_open () || fs.fail ())
   {
     throw pcl::IOException ("[pcl::PCDWriter::writeASCII] Could not open file for writing!");
+    return (-1);
   }
 
   // Mandatory lock file

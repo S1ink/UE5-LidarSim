@@ -7,13 +7,13 @@
   #error PCL requires C++14 or above
 #endif
 
-#define BUILD_MinSizeRel
+#define BUILD_Release
 /* PCL version information */
 #define PCL_MAJOR_VERSION 1
 #define PCL_MINOR_VERSION 13
 #define PCL_REVISION_VERSION 1
-#define PCL_DEV_VERSION 1
-#define PCL_VERSION_PRETTY "1.13.1-dev"
+#define PCL_DEV_VERSION 0
+#define PCL_VERSION_PRETTY "1.13.1"
 #define PCL_VERSION_CALC(MAJ, MIN, PATCH) (MAJ*100000+MIN*100+PATCH)
 #define PCL_VERSION \
     PCL_VERSION_CALC(PCL_MAJOR_VERSION, PCL_MINOR_VERSION, PCL_REVISION_VERSION)
@@ -51,8 +51,6 @@
 /* #undef HAVE_MM_MALLOC */
 
 /* #undef HAVE_PNG */
-
-/* #undef HAVE_ZLIB */
 
 /* Precompile for a minimal set of point types instead of all. */
 /* #undef PCL_ONLY_CORE_POINT_TYPES */

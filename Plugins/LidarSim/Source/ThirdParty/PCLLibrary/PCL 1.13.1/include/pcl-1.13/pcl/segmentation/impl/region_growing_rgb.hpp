@@ -50,6 +50,10 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT, typename NormalT>
 pcl::RegionGrowingRGB<PointT, NormalT>::RegionGrowingRGB () :
+  color_p2p_threshold_ (1225.0f),
+  color_r2r_threshold_ (10.0f),
+  distance_threshold_ (0.05f),
+  region_neighbour_number_ (100),
   point_distances_ (0),
   segment_neighbours_ (0),
   segment_distances_ (0),
@@ -268,17 +272,19 @@ pcl::RegionGrowingRGB<PointT, NormalT>::prepareForSegmentation ()
 template <typename PointT, typename NormalT> void
 pcl::RegionGrowingRGB<PointT, NormalT>::findPointNeighbours ()
 {
+  int point_number = static_cast<int> (indices_->size ());
   pcl::Indices neighbours;
   std::vector<float> distances;
 
   point_neighbours_.resize (input_->size (), neighbours);
   point_distances_.resize (input_->size (), distances);
 
-  for (const auto& point_index: (*indices_))
+  for (int i_point = 0; i_point < point_number; i_point++)
   {
+    int point_index = (*indices_)[i_point];
     neighbours.clear ();
     distances.clear ();
-    search_->nearestKSearch (point_index, region_neighbour_number_, neighbours, distances);
+    search_->nearestKSearch (i_point, region_neighbour_number_, neighbours, distances);
     point_neighbours_[point_index].swap (neighbours);
     point_distances_[point_index].swap (distances);
   }

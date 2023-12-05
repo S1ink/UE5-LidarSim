@@ -67,7 +67,8 @@ namespace pcl
       /** \brief Empty constructor. */
       LocalMaximum (bool extract_removed_indices = false) :
         FilterIndices<PointT>::FilterIndices (extract_removed_indices),
-        searcher_ ()
+        searcher_ (),
+        radius_ (1)
       {
         filter_name_ = "LocalMaximum";
       }
@@ -84,12 +85,6 @@ namespace pcl
       inline float
       getRadius () const { return (radius_); }
 
-      /** \brief Provide a pointer to the search object.
-        * Calling this is optional. If not called, the search method will be chosen automatically.
-        * \param[in] searcher a pointer to the spatial search object.
-        */
-      inline void
-      setSearchMethod (const SearcherPtr &searcher) { searcher_ = searcher; }
     protected:
       using PCLBase<PointT>::input_;
       using PCLBase<PointT>::indices_;
@@ -125,7 +120,7 @@ namespace pcl
       SearcherPtr searcher_;
 
       /** \brief The radius to use to determine if a point is the local max. */
-      float radius_{1.0f};
+      float radius_;
   };
 }
 

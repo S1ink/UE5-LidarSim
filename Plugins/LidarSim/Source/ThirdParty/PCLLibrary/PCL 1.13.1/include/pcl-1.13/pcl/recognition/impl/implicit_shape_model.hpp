@@ -49,7 +49,15 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT>
-pcl::features::ISMVoteList<PointT>::ISMVoteList() = default;
+pcl::features::ISMVoteList<PointT>::ISMVoteList () :
+  votes_ (new pcl::PointCloud<pcl::InterestPoint> ()),
+  tree_is_valid_ (false),
+  votes_origins_ (new pcl::PointCloud<PointT> ()),
+  votes_class_ (0),
+  k_ind_ (0),
+  k_sqr_dist_ (0)
+{
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT>
@@ -184,8 +192,8 @@ pcl::features::ISMVoteList<PointT>::findStrongestPeaks (
         best_density = peak_densities[i];
         strongest_peak = peaks[i];
         best_peak_ind = i;
-        ++peak_counter;
       }
+      ++peak_counter;
     }
 
     if( peak_counter == 0 )
@@ -289,7 +297,18 @@ pcl::features::ISMVoteList<PointT>::getNumberOfVotes ()
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-pcl::features::ISMModel::ISMModel () = default;
+pcl::features::ISMModel::ISMModel () :
+  statistical_weights_ (0),
+  learned_weights_ (0),
+  classes_ (0),
+  sigmas_ (0),
+  clusters_ (0),
+  number_of_classes_ (0),
+  number_of_visual_words_ (0),
+  number_of_clusters_ (0),
+  descriptors_dimension_ (0)
+{
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 pcl::features::ISMModel::ISMModel (ISMModel const & copy)
@@ -527,7 +546,17 @@ pcl::features::ISMModel::operator = (const pcl::features::ISMModel& other)
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 template <int FeatureSize, typename PointT, typename NormalT>
-pcl::ism::ImplicitShapeModelEstimation<FeatureSize, PointT, NormalT>::ImplicitShapeModelEstimation () = default;
+pcl::ism::ImplicitShapeModelEstimation<FeatureSize, PointT, NormalT>::ImplicitShapeModelEstimation () :
+  training_clouds_ (0),
+  training_classes_ (0),
+  training_normals_ (0),
+  training_sigmas_ (0),
+  sampling_size_ (0.1f),
+  feature_estimator_ (),
+  number_of_clusters_ (184),
+  n_vot_ON_ (true)
+{
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 template <int FeatureSize, typename PointT, typename NormalT>

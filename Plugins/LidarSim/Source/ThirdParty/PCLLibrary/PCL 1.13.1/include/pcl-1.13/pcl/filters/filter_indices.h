@@ -86,7 +86,8 @@ namespace pcl
         */
       FilterIndices (bool extract_removed_indices = false) :
           Filter<PointT> (extract_removed_indices),
-          
+          negative_ (false),
+          keep_organized_ (false),
           user_filter_value_ (std::numeric_limits<float>::quiet_NaN ())
       {
       }
@@ -164,10 +165,10 @@ namespace pcl
       using Filter<PointT>::removed_indices_;
 
       /** \brief False = normal filter behavior (default), true = inverted behavior. */
-      bool negative_{false};
+      bool negative_;
 
       /** \brief False = remove points (default), true = redefine points, keep structure. */
-      bool keep_organized_{false};
+      bool keep_organized_;
 
       /** \brief The user given value that the filtered point dimensions should be set to (default = NaN). */
       float user_filter_value_;
@@ -202,7 +203,8 @@ namespace pcl
         */
       FilterIndices (bool extract_removed_indices = false) :
           Filter<PCLPointCloud2> (extract_removed_indices),
-           
+          negative_ (false), 
+          keep_organized_ (false), 
           user_filter_value_ (std::numeric_limits<float>::quiet_NaN ())
       {
       }
@@ -266,10 +268,10 @@ namespace pcl
     protected:
 
       /** \brief False = normal filter behavior (default), true = inverted behavior. */
-      bool negative_{false};
+      bool negative_;
 
       /** \brief False = remove points (default), true = redefine points, keep structure. */
-      bool keep_organized_{false};
+      bool keep_organized_;
 
       /** \brief The user given value that the filtered point dimensions should be set to (default = NaN). */
       float user_filter_value_;

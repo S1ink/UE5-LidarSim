@@ -252,16 +252,16 @@ namespace pcl
     protected:
 
       /** \brief Thershold used in color test for points. */
-      float color_p2p_threshold_{1225.0f};
+      float color_p2p_threshold_;
 
       /** \brief Thershold used in color test for regions. */
-      float color_r2r_threshold_{10.0f};
+      float color_r2r_threshold_;
 
       /** \brief Threshold that tells which points we need to assume neighbouring. */
-      float distance_threshold_{0.05f};
+      float distance_threshold_;
 
       /** \brief Number of neighbouring segments to find. */
-      unsigned int region_neighbour_number_{100};
+      unsigned int region_neighbour_number_;
 
       /** \brief Stores distances for the point neighbours from point_neighbours_ */
       std::vector< std::vector<float> > point_distances_;

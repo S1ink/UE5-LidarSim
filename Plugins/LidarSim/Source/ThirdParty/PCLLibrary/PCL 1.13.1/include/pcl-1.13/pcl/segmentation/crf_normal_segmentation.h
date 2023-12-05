@@ -47,7 +47,7 @@ namespace pcl
    * \author Christian Potthast
    */
   template <typename PointT>
-  class PCL_DEPRECATED(1, 17, "CrfNormalSegmentation is not implemented and does not do anything useful") CrfNormalSegmentation
+  class PCL_EXPORTS CrfNormalSegmentation
   {
     public:
       /** \brief Constructor that sets default values for member variables. */
@@ -71,4 +71,6 @@ namespace pcl
   };
 }
 
+#ifdef PCL_NO_PRECOMPILE
 #include <pcl/segmentation/impl/crf_normal_segmentation.hpp>
+#endif

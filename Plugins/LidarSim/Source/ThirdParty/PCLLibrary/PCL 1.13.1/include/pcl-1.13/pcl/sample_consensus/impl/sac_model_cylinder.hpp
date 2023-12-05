@@ -41,6 +41,7 @@
 #ifndef PCL_SAMPLE_CONSENSUS_IMPL_SAC_MODEL_CYLINDER_H_
 #define PCL_SAMPLE_CONSENSUS_IMPL_SAC_MODEL_CYLINDER_H_
 
+#include <unsupported/Eigen/NonLinearOptimization> // for LevenbergMarquardt
 #include <pcl/sample_consensus/sac_model_cylinder.h>
 #include <pcl/common/common.h> // for getAngle3D
 #include <pcl/common/concatenate.h>
@@ -84,7 +85,7 @@ pcl::SampleConsensusModelCylinder<PointT, PointNT>::computeModelCoefficients (
 
   if (!normals_)
   {
-    PCL_ERROR ("[pcl::SampleConsensusModelCylinder::computeModelCoefficients] No input dataset containing normals was given! Use setInputNormals\n");
+    PCL_ERROR ("[pcl::SampleConsensusModelCylinder::computeModelCoefficients] No input dataset containing normals was given!\n");
     return (false);
   }
 
@@ -298,20 +299,14 @@ pcl::SampleConsensusModelCylinder<PointT, PointNT>::optimizeModelCoefficients (
     return;
   }
 
-  Eigen::ArrayXf pts_x(inliers.size());
-  Eigen::ArrayXf pts_y(inliers.size());
-  Eigen::ArrayXf pts_z(inliers.size());
-  std::size_t pos = 0;
-  for(const auto& index : inliers) {
-    pts_x[pos] = (*input_)[index].x;
-    pts_y[pos] = (*input_)[index].y;
-    pts_z[pos] = (*input_)[index].z;
-    ++pos;
-  }
-  pcl::internal::optimizeModelCoefficientsCylinder(optimized_coefficients, pts_x, pts_y, pts_z);
+  OptimizationFunctor functor (this, inliers);
+  Eigen::NumericalDiff<OptimizationFunctor > num_diff (functor);
+  Eigen::LevenbergMarquardt<Eigen::NumericalDiff<OptimizationFunctor>, float> lm (num_diff);
+  int info = lm.minimize (optimized_coefficients);
   
-  PCL_DEBUG ("[pcl::SampleConsensusModelCylinder::optimizeModelCoefficients] Initial solution: %g %g %g %g %g %g %g \nFinal solution: %g %g %g %g %g %g %g\n",
-             model_coefficients[0], model_coefficients[1], model_coefficients[2], model_coefficients[3],
+  // Compute the L2 norm of the residuals
+  PCL_DEBUG ("[pcl::SampleConsensusModelCylinder::optimizeModelCoefficients] LM solver finished with exit code %i, having a residual norm of %g. \nInitial solution: %g %g %g %g %g %g %g \nFinal solution: %g %g %g %g %g %g %g\n",
+             info, lm.fvec.norm (), model_coefficients[0], model_coefficients[1], model_coefficients[2], model_coefficients[3],
              model_coefficients[4], model_coefficients[5], model_coefficients[6], optimized_coefficients[0], optimized_coefficients[1], optimized_coefficients[2], optimized_coefficients[3], optimized_coefficients[4], optimized_coefficients[5], optimized_coefficients[6]);
     
   Eigen::Vector3f line_dir (optimized_coefficients[3], optimized_coefficients[4], optimized_coefficients[5]);
@@ -452,7 +447,7 @@ pcl::SampleConsensusModelCylinder<PointT, PointNT>::projectPointToCylinder (
   Eigen::Vector4f line_pt  (model_coefficients[0], model_coefficients[1], model_coefficients[2], 0.0f);
   Eigen::Vector4f line_dir (model_coefficients[3], model_coefficients[4], model_coefficients[5], 0.0f);
 
-  float k = (pt.dot (line_dir) - line_pt.dot (line_dir)) / line_dir.dot (line_dir);
+  float k = (pt.dot (line_dir) - line_pt.dot (line_dir)) * line_dir.dot (line_dir);
   pt_proj = line_pt + k * line_dir;
 
   Eigen::Vector4f dir = pt - pt_proj;

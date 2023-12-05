@@ -64,7 +64,8 @@ namespace pcl
       //! Stores some information extracted from the neighborhood of a point
       struct LocalSurface
       {
-        LocalSurface () = default;
+        LocalSurface () : 
+           max_neighbor_distance_squared () {}
 
         Eigen::Vector3f normal;
         Eigen::Vector3f neighborhood_mean;
@@ -72,26 +73,27 @@ namespace pcl
         Eigen::Vector3f normal_no_jumps;
         Eigen::Vector3f neighborhood_mean_no_jumps;
         Eigen::Vector3f eigen_values_no_jumps;
-        float max_neighbor_distance_squared{};
+        float max_neighbor_distance_squared;
       };
       
       //! Stores the indices of the shadow border corresponding to obstacle borders
       struct ShadowBorderIndices 
       {
-        ShadowBorderIndices () = default;
-        int left{-1}, right{-1}, top{-1}, bottom{-1};
+        ShadowBorderIndices () : left (-1), right (-1), top (-1), bottom (-1) {}
+        int left, right, top, bottom;
       };
 
       //! Parameters used in this class
       struct Parameters
       {
-        Parameters () = default;
-        int max_no_of_threads{1};
-        int pixel_radius_borders{3};
-        int pixel_radius_plane_extraction{2};
-        int pixel_radius_border_direction{2};
-        float minimum_border_probability{0.8f};
-        int pixel_radius_principal_curvature{2};
+        Parameters () : max_no_of_threads(1), pixel_radius_borders (3), pixel_radius_plane_extraction (2), pixel_radius_border_direction (2), 
+                       minimum_border_probability (0.8f), pixel_radius_principal_curvature (2) {}
+        int max_no_of_threads;
+        int pixel_radius_borders;
+        int pixel_radius_plane_extraction;
+        int pixel_radius_border_direction;
+        float minimum_border_probability;
+        int pixel_radius_principal_curvature;
       };
       
       // =====STATIC METHODS=====
@@ -179,16 +181,16 @@ namespace pcl
       // =====PROTECTED MEMBER VARIABLES=====
       Parameters parameters_;
       const RangeImage* range_image_;
-      int range_image_size_during_extraction_{0};
+      int range_image_size_during_extraction_;
       std::vector<float> border_scores_left_, border_scores_right_;
       std::vector<float> border_scores_top_, border_scores_bottom_;
-      LocalSurface** surface_structure_{nullptr};
-      PointCloudOut* border_descriptions_{nullptr};
-      ShadowBorderIndices** shadow_border_informations_{nullptr};
-      Eigen::Vector3f** border_directions_{nullptr};
+      LocalSurface** surface_structure_;
+      PointCloudOut* border_descriptions_;
+      ShadowBorderIndices** shadow_border_informations_;
+      Eigen::Vector3f** border_directions_;
       
-      float* surface_change_scores_{nullptr};
-      Eigen::Vector3f* surface_change_directions_{nullptr};
+      float* surface_change_scores_;
+      Eigen::Vector3f* surface_change_directions_;
       
       
       // =====PROTECTED METHODS=====

@@ -291,16 +291,16 @@ namespace pcl
 
       /** \brief Indicates if the stored values (eccentricity, moment of inertia, AABB etc.)
         * are valid when accessed with the get methods. */
-      bool is_valid_{false};
+      bool is_valid_;
 
       /** \brief Stores the angle step */
-      float step_{10.0f};
+      float step_;
 
       /** \brief Stores the mass of point in the cloud */
-      float point_mass_{0.0001f};
+      float point_mass_;
 
       /** \brief Stores the flag for mass normalization */
-      bool normalize_{true};
+      bool normalize_;
 
       /** \brief Stores the mean value (center of mass) of the cloud */
       Eigen::Vector3f mean_value_;
@@ -315,13 +315,13 @@ namespace pcl
       Eigen::Vector3f minor_axis_;
 
       /** \brief Major eigen value */
-      float major_value_{0.0f};
+      float major_value_;
 
       /** \brief Middle eigen value */
-      float middle_value_{0.0f};
+      float middle_value_;
 
       /** \brief Minor eigen value */
-      float minor_value_{0.0f};
+      float minor_value_;
 
       /** \brief Stores calculated moments of inertia */
       std::vector <float> moment_of_inertia_;

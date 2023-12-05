@@ -109,14 +109,8 @@ namespace pcl
   inline std::string
   getFieldsList (const pcl::PCLPointCloud2 &cloud)
   {
-    if (cloud.fields.empty())
-    {
-      return "";
-    } else
-    {
-      return std::accumulate(std::next (cloud.fields.begin ()), cloud.fields.end (), cloud.fields[0].name,
-          [](const auto& acc, const auto& field) { return acc + " " + field.name; });
-    }
+    return std::accumulate(std::next (cloud.fields.begin ()), cloud.fields.end (), cloud.fields[0].name,
+        [](const auto& acc, const auto& field) { return acc + " " + field.name; });
   }
 
   /** \brief Obtains the size of a specific field data type in bytes

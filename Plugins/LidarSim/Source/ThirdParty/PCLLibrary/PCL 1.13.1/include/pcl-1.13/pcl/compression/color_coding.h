@@ -64,7 +64,10 @@ public:
   /** \brief Constructor.
    *
    * */
-  ColorCoding () = default;
+  ColorCoding () :
+    output_ (), colorBitReduction_ (0)
+  {
+  }
 
   /** \brief Empty class constructor. */
   virtual
@@ -350,7 +353,7 @@ public:
 
 protected:
   /** \brief Pointer to output point cloud dataset. */
-  PointCloudPtr output_{nullptr};
+  PointCloudPtr output_;
 
   /** \brief Vector for storing average color information  */
   std::vector<char> pointAvgColorDataVector_;
@@ -365,7 +368,7 @@ protected:
   std::vector<char>::const_iterator pointDiffColorDataVector_Iterator_;
 
   /** \brief Amount of bits to be removed from color components before encoding */
-  unsigned char colorBitReduction_{0};
+  unsigned char colorBitReduction_;
 
   // frame header identifier
   static const int defaultColor_;

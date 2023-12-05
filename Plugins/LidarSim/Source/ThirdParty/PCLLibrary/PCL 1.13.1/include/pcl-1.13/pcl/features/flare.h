@@ -90,9 +90,13 @@ namespace pcl
     public:
       /** \brief Constructor. */
       FLARELocalReferenceFrameEstimation () :
-        
+        tangent_radius_ (0.0f),
+        margin_thresh_ (0.85f),
+        min_neighbors_for_normal_axis_ (6),
+        min_neighbors_for_tangent_axis_ (6),
         sampled_surface_ (), 
-        sampled_tree_ ()
+        sampled_tree_ (),
+        fake_sampled_surface_ (false)
       {
         feature_name_ = "FLARELocalReferenceFrameEstimation";
       }
@@ -249,16 +253,16 @@ namespace pcl
 
     private:
       /** \brief Radius used to find tangent axis. */
-      float tangent_radius_{0.0f};
+      float tangent_radius_;
 
       /** \brief Threshold that define if a support point is near the margins. */
-      float margin_thresh_{0.85f}; 
+      float margin_thresh_; 
 
       /** \brief Min number of neighbours required for the computation of Z axis. Otherwise, feature point normal is used. */
-      int min_neighbors_for_normal_axis_{6};
+      int min_neighbors_for_normal_axis_;
 
       /** \brief Min number of neighbours required for the computation of X axis. Otherwise, a random X axis is set */
-      int min_neighbors_for_tangent_axis_{6};
+      int min_neighbors_for_tangent_axis_;
 
       /** \brief An input point cloud describing the surface that is to be used
         * for nearest neighbor searches for the estimation of X axis.
@@ -275,7 +279,7 @@ namespace pcl
       std::vector<SignedDistanceT> signed_distances_from_highest_points_;
 
       /** \brief If no sampled_surface_ is given, we use surface_ as the sampled surface. */
-      bool fake_sampled_surface_{false};
+      bool fake_sampled_surface_;
 
   };
 

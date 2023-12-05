@@ -99,6 +99,9 @@ namespace pcl
       ConditionalEuclideanClustering (bool extract_removed_clusters = false) :
           searcher_ (),
           condition_function_ (),
+          cluster_tolerance_ (0.0f),
+          min_cluster_size_ (1),
+          max_cluster_size_ (std::numeric_limits<int>::max ()),
           extract_removed_clusters_ (extract_removed_clusters),
           small_clusters_ (new pcl::IndicesClusters),
           large_clusters_ (new pcl::IndicesClusters)
@@ -234,28 +237,28 @@ namespace pcl
 
     private:
       /** \brief A pointer to the spatial search object */
-      SearcherPtr searcher_{nullptr};
+      SearcherPtr searcher_;
 
       /** \brief The condition function that needs to hold for clustering */
       std::function<bool (const PointT&, const PointT&, float)> condition_function_;
 
       /** \brief The distance to scan for cluster candidates (default = 0.0) */
-      float cluster_tolerance_{0.0f};
+      float cluster_tolerance_;
 
       /** \brief The minimum cluster size (default = 1) */
-      int min_cluster_size_{1};
+      int min_cluster_size_;
 
       /** \brief The maximum cluster size (default = unlimited) */
-      int max_cluster_size_{std::numeric_limits<int>::max ()};
+      int max_cluster_size_;
 
       /** \brief Set to true if you want to be able to extract the clusters that are too large or too small (default = false) */
       bool extract_removed_clusters_;
 
       /** \brief The resultant clusters that contain less than min_cluster_size points */
-      pcl::IndicesClustersPtr small_clusters_{nullptr};
+      pcl::IndicesClustersPtr small_clusters_;
 
       /** \brief The resultant clusters that contain more than max_cluster_size points */
-      pcl::IndicesClustersPtr large_clusters_{nullptr};
+      pcl::IndicesClustersPtr large_clusters_;
 
     public:
       PCL_MAKE_ALIGNED_OPERATOR_NEW

@@ -69,7 +69,8 @@ namespace pcl
       using ConstPtr = shared_ptr<const SamplingSurfaceNormal<PointT> >;
 
       /** \brief Empty constructor. */
-      SamplingSurfaceNormal ()
+      SamplingSurfaceNormal () : 
+        sample_ (10), seed_ (static_cast<unsigned int> (time (nullptr))), ratio_ ()
       {
         filter_name_ = "SamplingSurfaceNormal";
         srand (seed_);
@@ -127,11 +128,11 @@ namespace pcl
     protected:
 
       /** \brief Maximum number of samples in each grid. */
-      unsigned int sample_{10};
+      unsigned int sample_;
       /** \brief Random number seed. */
-      unsigned int seed_{static_cast<unsigned int> (time (nullptr))};
+      unsigned int seed_;
       /** \brief Ratio of points to be sampled in each grid */
-      float ratio_{0.0f};
+      float ratio_;
 
       /** \brief Sample of point indices into a separate PointCloud
         * \param[out] output the resultant point cloud

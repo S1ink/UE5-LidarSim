@@ -88,12 +88,30 @@ namespace pcl
       
       PLYReader ()
         : origin_ (Eigen::Vector4f::Zero ())
-        , orientation_ (Eigen::Matrix3f::Identity ())
+        , orientation_ (Eigen::Matrix3f::Zero ())
+        , cloud_ ()
+        , vertex_count_ (0)
+        , vertex_offset_before_ (0)
+        , range_grid_ (nullptr)
+        , rgb_offset_before_ (0)
+        , do_resize_ (false)
+        , polygons_ (nullptr)
+        , r_(0), g_(0), b_(0)
+        , a_(0), rgba_(0)
       {}
 
       PLYReader (const PLYReader &p)
         : origin_ (Eigen::Vector4f::Zero ())
-        , orientation_ (Eigen::Matrix3f::Identity ())
+        , orientation_ (Eigen::Matrix3f::Zero ())
+        , cloud_ ()
+        , vertex_count_ (0)
+        , vertex_offset_before_ (0)
+        , range_grid_ (nullptr)
+        , rgb_offset_before_ (0)
+        , do_resize_ (false)
+        , polygons_ (nullptr)
+        , r_(0), g_(0), b_(0)
+        , a_(0), rgba_(0)
       {
         *this = p;
       }
@@ -120,8 +138,8 @@ namespace pcl
         *  * > 0 on success
         * \param[in] file_name the name of the file to load
         * \param[out] cloud the resultant point cloud dataset (only the header will be filled)
-        * \param[out] origin the sensor data acquisition origin (translation)
-        * \param[out] orientation the sensor data acquisition origin (rotation)
+        * \param[in] origin the sensor data acquisition origin (translation)
+        * \param[in] orientation the sensor data acquisition origin (rotation)
         * \param[out] ply_version the PLY version read from the file
         * \param[out] data_type the type of PLY data stored in the file
         * \param[out] data_idx the data index
@@ -139,8 +157,8 @@ namespace pcl
       /** \brief Read a point cloud data from a PLY file and store it into a pcl/PCLPointCloud2.
         * \param[in] file_name the name of the file containing the actual PointCloud data
         * \param[out] cloud the resultant PointCloud message read from disk
-        * \param[out] origin the sensor data acquisition origin (translation)
-        * \param[out] orientation the sensor data acquisition origin (rotation)
+        * \param[in] origin the sensor data acquisition origin (translation)
+        * \param[in] orientation the sensor data acquisition origin (rotation)
         * \param[out] ply_version the PLY version read from the file
         * \param[in] offset the offset in the file where to expect the true header to begin.
         * One usage example for setting the offset parameter is for reading
@@ -199,8 +217,8 @@ namespace pcl
         *
         * \param[in] file_name the name of the file containing the actual PointCloud data
         * \param[out] mesh the resultant PolygonMesh message read from disk
-        * \param[out] origin the sensor data acquisition origin (translation)
-        * \param[out] orientation the sensor data acquisition origin (rotation)
+        * \param[in] origin the sensor data acquisition origin (translation)
+        * \param[in] orientation the sensor data acquisition origin (rotation)
         * \param[out] ply_version the PLY version read from the file
         * \param[in] offset the offset in the file where to expect the true header to begin.
         * One usage example for setting the offset parameter is for reading
@@ -506,23 +524,23 @@ namespace pcl
       Eigen::Matrix3f orientation_;
 
       //vertex element artifacts
-      pcl::PCLPointCloud2 *cloud_{nullptr};
-      std::size_t vertex_count_{0};
-      int vertex_offset_before_{0};
+      pcl::PCLPointCloud2 *cloud_;
+      std::size_t vertex_count_;
+      int vertex_offset_before_;
       //range element artifacts
-      std::vector<std::vector <int> > *range_grid_{nullptr};
-      std::size_t rgb_offset_before_{0};
-      bool do_resize_{false};
+      std::vector<std::vector <int> > *range_grid_;
+      std::size_t rgb_offset_before_;
+      bool do_resize_;
       //face element artifact
-      std::vector<pcl::Vertices> *polygons_{nullptr};
+      std::vector<pcl::Vertices> *polygons_;
     public:
       PCL_MAKE_ALIGNED_OPERATOR_NEW
       
     private:
       // RGB values stored by vertexColorCallback()
-      std::int32_t r_{0}, g_{0}, b_{0};
+      std::int32_t r_, g_, b_;
       // Color values stored by vertexAlphaCallback()
-      std::uint32_t a_{0}, rgba_{0};
+      std::uint32_t a_, rgba_;
   };
 
   /** \brief Point Cloud Data (PLY) file format writer.
@@ -738,9 +756,9 @@ namespace pcl
 
     /** \brief Load any PLY file into a PCLPointCloud2 type.
       * \param[in] file_name the name of the file to load
-      * \param[out] cloud the resultant templated point cloud
-      * \param[out] origin the sensor acquisition origin (only for > PLY_V7 - null if not present)
-      * \param[out] orientation the sensor acquisition orientation if available, 
+      * \param[in] cloud the resultant templated point cloud
+      * \param[in] origin the sensor acquisition origin (only for > PLY_V7 - null if not present)
+      * \param[in] orientation the sensor acquisition orientation if available, 
       * identity if not present
       * \ingroup io
       */

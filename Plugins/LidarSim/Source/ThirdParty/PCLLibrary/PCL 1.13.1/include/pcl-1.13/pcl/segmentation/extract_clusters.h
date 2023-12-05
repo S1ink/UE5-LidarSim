@@ -179,8 +179,9 @@ namespace pcl
         for (std::size_t j = 0; j < seed_queue.size (); ++j)
           r.indices[j] = seed_queue[j];
 
-        // After clustering, indices are out of order, so sort them
+        // These two lines should not be needed: (can anyone confirm?) -FF
         std::sort (r.indices.begin (), r.indices.end ());
+        r.indices.erase (std::unique (r.indices.begin (), r.indices.end ()), r.indices.end ());
 
         r.header = cloud.header;
         clusters.push_back (r);   // We could avoid a copy by working directly in the vector
@@ -298,8 +299,9 @@ namespace pcl
         for (std::size_t j = 0; j < seed_queue.size (); ++j)
           r.indices[j] = seed_queue[j];
 
-        // After clustering, indices are out of order, so sort them
+        // These two lines should not be needed: (can anyone confirm?) -FF
         std::sort (r.indices.begin (), r.indices.end ());
+        r.indices.erase (std::unique (r.indices.begin (), r.indices.end ()), r.indices.end ());
 
         r.header = cloud.header;
         clusters.push_back (r);
@@ -337,7 +339,11 @@ namespace pcl
 
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       /** \brief Empty constructor. */
-      EuclideanClusterExtraction () = default;
+      EuclideanClusterExtraction () : tree_ (), 
+                                      cluster_tolerance_ (0),
+                                      min_pts_per_cluster_ (1), 
+                                      max_pts_per_cluster_ (std::numeric_limits<pcl::uindex_t>::max ())
+      {};
 
       /** \brief Provide a pointer to the search object.
         * \param[in] tree a pointer to the spatial search object.
@@ -419,16 +425,16 @@ namespace pcl
       using BasePCLBase::deinitCompute;
 
       /** \brief A pointer to the spatial search object. */
-      KdTreePtr tree_{nullptr};
+      KdTreePtr tree_;
 
       /** \brief The spatial cluster tolerance as a measure in the L2 Euclidean space. */
-      double cluster_tolerance_{0.0};
+      double cluster_tolerance_;
 
       /** \brief The minimum number of points that a cluster needs to contain in order to be considered valid (default = 1). */
-      pcl::uindex_t min_pts_per_cluster_{1};
+      pcl::uindex_t min_pts_per_cluster_;
 
       /** \brief The maximum number of points that a cluster needs to contain in order to be considered valid (default = MAXINT). */
-      pcl::uindex_t max_pts_per_cluster_{std::numeric_limits<pcl::uindex_t>::max()};
+      pcl::uindex_t max_pts_per_cluster_;
 
       /** \brief Class getName method. */
       virtual std::string getClassName () const { return ("EuclideanClusterExtraction"); }

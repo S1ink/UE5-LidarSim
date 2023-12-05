@@ -155,7 +155,7 @@ protected:
   std::vector<PairwisePotential*> pairwise_potential_;
 
   /** Input types */
-  bool xyz_{false}, rgb_{false}, normal_{false};
+  bool xyz_, rgb_, normal_;
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW

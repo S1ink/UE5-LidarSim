@@ -76,7 +76,8 @@ pcl::search::FlannSearch<PointT, FlannDistance>::KdTreeMultiIndexCreator::create
 //////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT, typename FlannDistance>
 pcl::search::FlannSearch<PointT, FlannDistance>::FlannSearch(bool sorted, FlannIndexCreatorPtr creator) : pcl::search::Search<PointT> ("FlannSearch",sorted),
-  index_(), creator_ (creator),  point_representation_ (new DefaultPointRepresentation<PointT>)
+  index_(), creator_ (creator), eps_ (0), checks_ (32), input_copied_for_flann_ (false), point_representation_ (new DefaultPointRepresentation<PointT>),
+  dim_ (0), identity_mapping_()
 {
   dim_ = point_representation_->getNumberOfDimensions ();
 }
@@ -90,7 +91,7 @@ pcl::search::FlannSearch<PointT, FlannDistance>::~FlannSearch()
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-template <typename PointT, typename FlannDistance> bool
+template <typename PointT, typename FlannDistance> void
 pcl::search::FlannSearch<PointT, FlannDistance>::setInputCloud (const PointCloudConstPtr& cloud, const IndicesConstPtr& indices)
 {
   input_ = cloud;
@@ -98,7 +99,6 @@ pcl::search::FlannSearch<PointT, FlannDistance>::setInputCloud (const PointCloud
   convertInputToFlannMatrix ();
   index_ = creator_->createIndex (input_flann_);
   index_->buildIndex ();
-  return true;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,9 +117,6 @@ pcl::search::FlannSearch<PointT, FlannDistance>::nearestKSearch (const PointT &p
 
   float* cdata = can_cast ? const_cast<float*> (reinterpret_cast<const float*> (&point)): data;
   const flann::Matrix<float> m (cdata ,1, point_representation_->getNumberOfDimensions ());
-
-  if (static_cast<unsigned int>(k) > total_nr_points_)
-    k = total_nr_points_;
 
   flann::SearchParams p;
   p.eps = eps_;
@@ -182,9 +179,6 @@ pcl::search::FlannSearch<PointT, FlannDistance>::nearestKSearch (
     // search won't change the matrix
     float* cdata = can_cast ? const_cast<float*> (reinterpret_cast<const float*> (&cloud[0])): data;
     const flann::Matrix<float> m (cdata ,cloud.size (), dim_, can_cast ? sizeof (PointT) : dim_ * sizeof (float) );
-
-    if (static_cast<unsigned int>(k) > total_nr_points_)
-      k = total_nr_points_;
 
     flann::SearchParams p;
     p.sorted = sorted_results_;
@@ -391,7 +385,6 @@ pcl::search::FlannSearch<PointT, FlannDistance>::convertInputToFlannMatrix ()
       // const cast is evil, but flann won't change the data
       input_flann_ = static_cast<MatrixPtr> (new flann::Matrix<float> (const_cast<float*>(reinterpret_cast<const float*>(&(*input_) [0])), original_no_of_points, point_representation_->getNumberOfDimensions (),sizeof (PointT)));
       input_copied_for_flann_ = false;
-      total_nr_points_ = input_->points.size();
     }
     else
     {
@@ -407,12 +400,11 @@ pcl::search::FlannSearch<PointT, FlannDistance>::convertInputToFlannMatrix ()
           continue;
         }
 
-        index_mapping_.push_back (static_cast<index_t> (i));  
+        index_mapping_.push_back (static_cast<index_t> (i));  // If the returned index should be for the indices vector
 
         point_representation_->vectorize (point, cloud_ptr);
         cloud_ptr += dim_;
       }
-      total_nr_points_ = index_mapping_.size();
     }
 
   }
@@ -420,7 +412,6 @@ pcl::search::FlannSearch<PointT, FlannDistance>::convertInputToFlannMatrix ()
   {
     input_flann_ = static_cast<MatrixPtr> (new flann::Matrix<float> (new float[original_no_of_points*point_representation_->getNumberOfDimensions ()], original_no_of_points, point_representation_->getNumberOfDimensions ()));
     float* cloud_ptr = input_flann_->ptr();
-    identity_mapping_ = false;
     for (std::size_t indices_index = 0; indices_index < original_no_of_points; ++indices_index)
     {
       index_t cloud_index = (*indices_)[indices_index];
@@ -428,15 +419,15 @@ pcl::search::FlannSearch<PointT, FlannDistance>::convertInputToFlannMatrix ()
       // Check if the point is invalid
       if (!point_representation_->isValid (point))
       {
+        identity_mapping_ = false;
         continue;
       }
 
-      index_mapping_.push_back (static_cast<index_t> (cloud_index));  
+      index_mapping_.push_back (static_cast<index_t> (indices_index));  // If the returned index should be for the indices vector
 
       point_representation_->vectorize (point, cloud_ptr);
       cloud_ptr += dim_;
     }
-    total_nr_points_ = index_mapping_.size();
   }
   if (input_copied_for_flann_)
     input_flann_->rows = index_mapping_.size ();

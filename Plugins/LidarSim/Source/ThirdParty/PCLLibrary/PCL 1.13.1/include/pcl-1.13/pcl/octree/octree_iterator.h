@@ -57,13 +57,9 @@ namespace octree {
 
 // Octree iterator state pushed on stack/list
 struct IteratorState {
-  OctreeNode* node_{nullptr};
-  OctreeKey key_{};
-  uindex_t depth_{0};
-  IteratorState() = default;
-  IteratorState(OctreeNode* node, const OctreeKey& key, uindex_t depth)
-  : node_(node), key_(key), depth_(depth)
-  {}
+  OctreeNode* node_;
+  OctreeKey key_;
+  uindex_t depth_;
 };
 
 /** \brief @b Abstract octree iterator class

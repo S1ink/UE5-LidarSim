@@ -55,10 +55,16 @@ pcl::octree::OctreePointCloud<PointT, LeafContainerT, BranchContainerT, OctreeT>
 : OctreeT()
 , input_(PointCloudConstPtr())
 , indices_(IndicesConstPtr())
+, epsilon_(0)
 , resolution_(resolution)
+, min_x_(0.0f)
 , max_x_(resolution)
+, min_y_(0.0f)
 , max_y_(resolution)
+, min_z_(0.0f)
 , max_z_(resolution)
+, bounding_box_defined_(false)
+, max_objs_per_leaf_(0)
 {
   if (resolution <= 0.0) {
     PCL_THROW_EXCEPTION(InitFailedException,
@@ -517,9 +523,9 @@ pcl::octree::OctreePointCloud<PointT, LeafContainerT, BranchContainerT, OctreeT>
 
         // octree not empty - we add another tree level and thus increase its size by a
         // factor of 2*2*2
-        child_idx = static_cast<unsigned char>(((bLowerBoundViolationX) << 2) |
-                                               ((bLowerBoundViolationY) << 1) |
-                                               ((bLowerBoundViolationZ)));
+        child_idx = static_cast<unsigned char>(((!bUpperBoundViolationX) << 2) |
+                                               ((!bUpperBoundViolationY) << 1) |
+                                               ((!bUpperBoundViolationZ)));
 
         BranchNode* newRootBranch;
 
@@ -532,13 +538,13 @@ pcl::octree::OctreePointCloud<PointT, LeafContainerT, BranchContainerT, OctreeT>
 
         octreeSideLen = static_cast<double>(1 << this->octree_depth_) * resolution_;
 
-        if (bLowerBoundViolationX)
+        if (!bUpperBoundViolationX)
           min_x_ -= octreeSideLen;
 
-        if (bLowerBoundViolationY)
+        if (!bUpperBoundViolationY)
           min_y_ -= octreeSideLen;
 
-        if (bLowerBoundViolationZ)
+        if (!bUpperBoundViolationZ)
           min_z_ -= octreeSideLen;
 
         // configure tree depth of octree

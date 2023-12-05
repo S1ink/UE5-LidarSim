@@ -45,7 +45,8 @@
 //////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointSource, typename PointFeature>
 pcl::MultiscaleFeaturePersistence<PointSource, PointFeature>::MultiscaleFeaturePersistence () : 
-  
+  alpha_ (0), 
+  distance_metric_ (L1),
   feature_estimator_ (),
   features_at_scale_ (),
   feature_representation_ ()

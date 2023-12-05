@@ -158,24 +158,6 @@ namespace pcl
         delete [] temp;
       }
 
-      void
-      vectorize (const PointT &p, float* out) const
-      {
-        copyToFloatArray (p, out);
-        if (!alpha_.empty ())
-          for (int i = 0; i < nr_dimensions_; ++i)
-            out[i] *= alpha_[i];
-      }
-
-      void
-      vectorize (const PointT &p, std::vector<float> &out) const
-      {
-        copyToFloatArray (p, out.data());
-        if (!alpha_.empty ())
-          for (int i = 0; i < nr_dimensions_; ++i)
-            out[i] *= alpha_[i];
-      }
-
       /** \brief Set the rescale values to use when vectorizing points
         * \param[in] rescale_array The array/vector of rescale values.  Can be of any type that implements the [] operator.
         */
@@ -263,7 +245,7 @@ namespace pcl
       using Pod = typename traits::POD<PointDefault>::type;
 
       NdCopyPointFunctor (const PointDefault &p1, float * p2)
-        : p1_ (reinterpret_cast<const Pod&>(p1)), p2_ (p2) {}
+        : p1_ (reinterpret_cast<const Pod&>(p1)), p2_ (p2), f_idx_ (0) { }
 
       template<typename Key> inline void operator() ()
       {
@@ -303,7 +285,7 @@ namespace pcl
     private:
       const Pod &p1_;
       float * p2_;
-      int f_idx_{0};
+      int f_idx_;
     };
 
     public:

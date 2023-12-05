@@ -64,13 +64,7 @@ pcl::RadiusOutlierRemoval<PointT>::applyFilterIndices (Indices &indices)
     else
       searcher_.reset (new pcl::search::KdTree<PointT> (false));
   }
-  if (!searcher_->setInputCloud (input_))
-  {
-    PCL_ERROR ("[pcl::%s::applyFilter] Error when initializing search method!\n", getClassName ().c_str ());
-    indices.clear ();
-    removed_indices_->clear ();
-    return;
-  }
+  searcher_->setInputCloud (input_);
 
   // The arrays to be used
   Indices nn_indices (indices_->size ());

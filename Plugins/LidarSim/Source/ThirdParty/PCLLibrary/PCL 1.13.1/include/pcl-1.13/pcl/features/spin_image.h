@@ -287,13 +287,13 @@ namespace pcl
       PointCloudNConstPtr input_normals_;
       PointCloudNConstPtr rotation_axes_cloud_;
       
-      bool is_angular_{false};
+      bool is_angular_;
 
       PointNT rotation_axis_;
-      bool use_custom_axis_{false};
-      bool use_custom_axes_cloud_{false};
+      bool use_custom_axis_;
+      bool use_custom_axes_cloud_;
 
-      bool is_radial_{false};
+      bool is_radial_;
 
       unsigned int image_width_;
       double support_angle_cos_;

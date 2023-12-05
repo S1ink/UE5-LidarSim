@@ -46,7 +46,12 @@ namespace octree {
 //////////////////////////////////////////////////////////////////////////////////////////////
 template <typename LeafContainerT, typename BranchContainerT>
 OctreeBase<LeafContainerT, BranchContainerT>::OctreeBase()
-: root_node_(new BranchNode())
+: leaf_count_(0)
+, branch_count_(1)
+, root_node_(new BranchNode())
+, depth_mask_(0)
+, octree_depth_(0)
+, dynamic_depth_enabled_(false)
 {}
 
 //////////////////////////////////////////////////////////////////////////////////////////////

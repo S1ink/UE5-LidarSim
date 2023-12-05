@@ -121,7 +121,8 @@ namespace pcl
       IntegralImage2D (bool compute_second_order_integral_images) :
         first_order_integral_image_ (),
         second_order_integral_image_ (),
-         
+        width_ (1), 
+        height_ (1), 
         compute_second_order_integral_images_ (compute_second_order_integral_images)
       {
       }
@@ -217,9 +218,9 @@ namespace pcl
       std::vector<unsigned> finite_values_integral_image_;
 
       /** \brief The width of the 2d input data array */
-      unsigned width_{1};
+      unsigned width_;
       /** \brief The height of the 2d input data array */
-      unsigned height_{1};
+      unsigned height_;
 
       /** \brief Indicates whether second order integral images are available **/
       bool compute_second_order_integral_images_;
@@ -246,7 +247,7 @@ namespace pcl
         first_order_integral_image_ (),
         second_order_integral_image_ (),
         
-         
+        width_ (1), height_ (1), 
         compute_second_order_integral_images_ (compute_second_order_integral_images)
       {
       }
@@ -336,9 +337,9 @@ namespace pcl
       std::vector<unsigned> finite_values_integral_image_;
 
       /** \brief The width of the 2d input data array */
-      unsigned width_{1};
+      unsigned width_;
       /** \brief The height of the 2d input data array */
-      unsigned height_{1};
+      unsigned height_;
 
       /** \brief Indicates whether second order integral images are available **/
       bool compute_second_order_integral_images_;

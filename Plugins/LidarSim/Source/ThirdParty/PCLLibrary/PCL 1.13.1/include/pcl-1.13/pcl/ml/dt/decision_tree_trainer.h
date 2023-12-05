@@ -229,29 +229,28 @@ protected:
 
 private:
   /** Maximum depth of the learned tree. */
-  std::size_t max_tree_depth_{15};
+  std::size_t max_tree_depth_;
   /** Number of features used to find optimal decision features. */
-  std::size_t num_of_features_{1000};
+  std::size_t num_of_features_;
   /** Number of thresholds. */
-  std::size_t num_of_thresholds_{10};
+  std::size_t num_of_thresholds_;
 
   /** FeatureHandler instance, responsible for creating and evaluating features. */
-  pcl::FeatureHandler<FeatureType, DataSet, ExampleIndex>* feature_handler_{nullptr};
+  pcl::FeatureHandler<FeatureType, DataSet, ExampleIndex>* feature_handler_;
   /** StatsEstimator instance, responsible for gathering stats about a node. */
-  pcl::StatsEstimator<LabelType, NodeType, DataSet, ExampleIndex>* stats_estimator_{
-      nullptr};
+  pcl::StatsEstimator<LabelType, NodeType, DataSet, ExampleIndex>* stats_estimator_;
 
   /** The training data set. */
-  DataSet data_set_{};
+  DataSet data_set_;
   /** The label data. */
-  std::vector<LabelType> label_data_{};
+  std::vector<LabelType> label_data_;
   /** The example data. */
-  std::vector<ExampleIndex> examples_{};
+  std::vector<ExampleIndex> examples_;
 
   /** Minimum number of examples to split a node. */
-  std::size_t min_examples_for_split_{0u};
+  std::size_t min_examples_for_split_;
   /** Thresholds to be used instead of generating uniform distributed thresholds. */
-  std::vector<float> thresholds_{};
+  std::vector<float> thresholds_;
   /** The data provider which is called before training a specific tree, if pointer is
    *   NULL, then data_set_ is used. */
   typename pcl::DecisionTreeTrainerDataProvider<FeatureType,
@@ -259,10 +258,10 @@ private:
                                                 LabelType,
                                                 ExampleIndex,
                                                 NodeType>::Ptr
-      decision_tree_trainer_data_provider_{nullptr};
+      decision_tree_trainer_data_provider_;
   /** If true, random features are generated at each node, otherwise, at start of
    *  training the tree */
-  bool random_features_at_split_node_{false};
+  bool random_features_at_split_node_;
 };
 
 } // namespace pcl

@@ -5,7 +5,6 @@
 #include <memory>
 
 #include <CoreMinimal.h>
-#include <Components/ActorComponent.h>
 #include <Physics/PhysicsInterfaceCore.h>
 #include <PhysicalMaterials/PhysicalMaterial.h>
 
@@ -273,30 +272,41 @@ static void genTraceBounds(
 template<typename fp_T = double>
 static void scan(
 	const AActor* src, const TArray<UE::Math::TVector<fp_T>>& directions, const double range,
-	std::function<void(const FHitResult&)> export_
+	std::function<void(const FHitResult&, const UE::Math::TVector<fp_T>&)> export_
 ) {
 	ASSERT_FP_TYPE(fp_T);
 
 	TStatId stats{};
+	FCollisionObjectQueryParams query_params = FCollisionObjectQueryParams(ECollisionChannel::ECC_WorldStatic);
 	FCollisionQueryParams trace_params = FCollisionQueryParams(TEXT("LiDAR Trace"), stats, true, src);
-	trace_params.bReturnPhysicalMaterial = true;
+	trace_params.bReturnPhysicalMaterial = false;	// enable if we do reflections or intensity calculations
 
 	FHitResult result{};
 	FVector start{}, end{};
 
 	const FTransform& to_world = src->ActorToWorld();
 	const size_t len = directions.Num();
+	//ParallelFor(len,
+	//	[&](int32_t idx) {
+	//		// local result, start, end
+	//		genTraceBounds<double>(to_world, static_cast<FVector>(directions[i]), range, start, end);
+	//		src->GetWorld()->LineTraceSingleByObjectType(
+	//			result, start, end,
+	//			FCollisionObjectQueryParams::DefaultObjectQueryParam, trace_params
+	//		);
+	//		if (result.bBlockingHit) {
+	//			export_(result);
+	//		}
+	//	}
+	//);
 	for (int i = 0; i < len; i++) {
 
 		genTraceBounds<double>(to_world, static_cast<FVector>(directions[i]), range, start, end);
 		// in the future we may want to use a multi-trace and test materials for transparency
-		src->GetWorld()->LineTraceSingleByObjectType(
-			result, start, end,
-			FCollisionObjectQueryParams::DefaultObjectQueryParam, trace_params
-		);
+		src->GetWorld()->LineTraceSingleByObjectType( result, start, end, query_params, trace_params );
 
 		if (result.bBlockingHit) {
-			export_(result);
+			export_(result, directions[i]);
 		}
 
 	}
@@ -327,40 +337,38 @@ void ULidarSimulationComponent::GenerateDirections(const TArray<float>& thetas, 
 	sphericalVectorProduct<float, double>(thetas, phis, directions);
 }
 
-void ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range) {
+void ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range, const float noise_distance_scale) {
 	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
 	if (hits.Num() != 0) {
-		UE_LOG(LidarSimComponent, Warning, TEXT("Hits output array contains prexisting elements."));
+		UE_LOG(LidarSimComponent, Warning, TEXT("[SCAN]: Hits output array contains prexisting elements."));
 	}
 	scan<double>(this->GetOwner(), directions, max_range,
-		[&hits](const FHitResult& result) {
-			hits.Emplace(std::move(result.Location), 1.0);
+		[&hits, &noise_distance_scale](const FHitResult& result, const FVector& src_dir) {
+			hits.Emplace(result.Location + (src_dir * (FMath::FRand() * noise_distance_scale * result.Distance)), 1.0);
 		}
 	);
 }
-void ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range) {
+void ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range, const float noise_distance_scale) {
 	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
 	if (positions.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
 	if (intensities.Num() != 0) {				UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
 	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
 	scan<double>(this->GetOwner(), directions, max_range,
-		[&positions, &intensities](const FHitResult& result) {
-			positions.Emplace(std::move(result.Location));
+		[&positions, &intensities, &noise_distance_scale](const FHitResult& result, const FVector& src_dir) {
+			positions.Emplace(result.Location + (src_dir * (FMath::FRand() * noise_distance_scale * result.Distance)));
 			intensities.Add(1.0);
 		}
 	);
 }
-void ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray<FLinearColor>& positions, TArray<uint8>& generated_colors, const float max_range, const FColor intensity_albedo) {
+void ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray<FLinearColor>& positions, TArray<uint8>& generated_colors, const float max_range, const float noise_distance_scale, const FColor intensity_albedo) {
 	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
 	if (positions.Num() != 0) {							UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
 	if (generated_colors.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
 	if (positions.Num() != generated_colors.Num()) {	UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
-	constexpr float
-		intensity = 1.f,
-		noise_scale = 2e-3f;
+	constexpr float intensity = 1.f;
 	scan<double>(this->GetOwner(), directions, max_range,
-		[&positions, &generated_colors, &intensity_albedo](const FHitResult& result) {
-			positions.Emplace(result.Location + (FMath::VRand() * (noise_scale * result.Distance)));
+		[&positions, &generated_colors, &intensity_albedo, &noise_distance_scale](const FHitResult& result, const FVector& src_dir) {
+			positions.Emplace(result.Location + (src_dir * (FMath::FRand() * noise_distance_scale * result.Distance)));
 			generated_colors.Add(intensity * intensity_albedo.R);	// there is probably a more optimal way to add 4 units to the array
 			generated_colors.Add(intensity * intensity_albedo.G);
 			generated_colors.Add(intensity * intensity_albedo.B);

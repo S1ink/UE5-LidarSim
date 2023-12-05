@@ -53,7 +53,6 @@ namespace pcl
     * See OrganizedMultiPlaneSegmentation for an example application.
     *
     * \author Alex Trevor, Suat Gedikli
-    * \ingroup segmentation
     */
   template <typename PointT, typename PointLT>
   class OrganizedConnectedComponentSegmentation : public PCLBase<PointT>

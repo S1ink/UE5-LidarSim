@@ -71,7 +71,7 @@ namespace pcl
 
 
       /** \brief Empty constructor. */
-      ProjectInliers () : sacmodel_ ()
+      ProjectInliers () : sacmodel_ (), model_type_ (), copy_all_data_ (false)
       {
         filter_name_ = "ProjectInliers";
       }
@@ -142,10 +142,10 @@ namespace pcl
       SampleConsensusModelPtr sacmodel_;
 
       /** \brief The type of model to use (user given parameter). */
-      int model_type_{0};
+      int model_type_;
 
       /** \brief True if all data will be returned, false if only the projected inliers. Default: false. */
-      bool copy_all_data_{false};
+      bool copy_all_data_;
 
       /** \brief Initialize the Sample Consensus model and set its parameters.
         * \param model_type the type of SAC model that is to be used
@@ -174,7 +174,7 @@ namespace pcl
 
     public:
       /** \brief Empty constructor. */
-      ProjectInliers ()
+      ProjectInliers () : model_type_ (), copy_all_data_ (false), copy_all_fields_ (true)
       {
         filter_name_ = "ProjectInliers";
       }
@@ -247,13 +247,13 @@ namespace pcl
       }
     protected:
       /** \brief The type of model to use (user given parameter). */
-      int model_type_{0};
+      int model_type_;
 
       /** \brief True if all data will be returned, false if only the projected inliers. Default: false. */
-      bool copy_all_data_{false};
+      bool copy_all_data_;
 
       /** \brief True if all fields will be returned, false if only XYZ. Default: true. */
-      bool copy_all_fields_{true};
+      bool copy_all_fields_;
 
       /** \brief A pointer to the vector of model coefficients. */
       ModelCoefficientsConstPtr model_;

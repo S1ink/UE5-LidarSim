@@ -180,10 +180,10 @@ namespace pcl
       std::vector<float> scale_values_;
 
       /** \brief Parameter that determines if a feature is to be considered unique or not */
-      float alpha_{0.0f};
+      float alpha_;
 
       /** \brief Parameter that determines which distance metric is to be usedto calculate the difference between feature vectors */
-      NormType distance_metric_{L1};
+      NormType distance_metric_;
 
       /** \brief the feature estimator that will be used to determine the feature set at each scale level */
       FeatureEstimatorPtr feature_estimator_;

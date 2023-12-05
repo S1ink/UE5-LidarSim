@@ -148,10 +148,10 @@ namespace pcl
 
 
       /** \brief Empty constructor. */
-      RSDEstimation ()
+      RSDEstimation () : nr_subdiv_ (5), plane_radius_ (0.2), save_histograms_ (false)
       {
         feature_name_ = "RadiusSurfaceDescriptor";
-      }
+      };
 
       /** \brief Set the number of subdivisions for the considered distance interval.
         * \param[in] nr_subdiv the number of subdivisions
@@ -220,13 +220,13 @@ namespace pcl
 
     private:
       /** \brief The number of subdivisions for the considered distance interval. */
-      int nr_subdiv_{5};
+      int nr_subdiv_;
 
       /** \brief The maximum radius, above which everything can be considered planar. */
-      double plane_radius_{0.2};
+      double plane_radius_;
 
       /** \brief Signals whether the full distance-angle histograms are being saved. */
-      bool save_histograms_{false};
+      bool save_histograms_;
 
     public:
       PCL_MAKE_ALIGNED_OPERATOR_NEW

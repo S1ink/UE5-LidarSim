@@ -107,11 +107,28 @@ namespace pcl
       IntegralImageNormalEstimation ()
         : normal_estimation_method_(AVERAGE_3D_GRADIENT)
         , border_policy_ (BORDER_POLICY_IGNORE)
-        ,  integral_image_DX_ (false)
+        , rect_width_ (0), rect_width_2_ (0), rect_width_4_ (0)
+        , rect_height_ (0), rect_height_2_ (0), rect_height_4_ (0)
+        , distance_threshold_ (0)
+        , integral_image_DX_ (false)
         , integral_image_DY_ (false)
         , integral_image_depth_ (false)
         , integral_image_XYZ_ (true)
+        , diff_x_ (nullptr)
+        , diff_y_ (nullptr)
+        , depth_data_ (nullptr)
+        , distance_map_ (nullptr)
+        , use_depth_dependent_smoothing_ (false)
         , max_depth_change_factor_ (20.0f*0.001f)
+        , normal_smoothing_size_ (10.0f)
+        , init_covariance_matrix_ (false)
+        , init_average_3d_gradient_ (false)
+        , init_simple_3d_gradient_ (false)
+        , init_depth_change_ (false)
+        , vpx_ (0.0f)
+        , vpy_ (0.0f)
+        , vpz_ (0.0f)
+        , use_sensor_origin_ (true)
       {
         feature_name_ = "IntegralImagesNormalEstimation";
         tree_.reset ();
@@ -368,16 +385,16 @@ namespace pcl
       BorderPolicy border_policy_;
 
       /** The width of the neighborhood region used for computing the normal. */
-      int rect_width_{0};
-      int rect_width_2_{0};
-      int rect_width_4_{0};
+      int rect_width_;
+      int rect_width_2_;
+      int rect_width_4_;
       /** The height of the neighborhood region used for computing the normal. */
-      int rect_height_{0};
-      int rect_height_2_{0};
-      int rect_height_4_{0};
+      int rect_height_;
+      int rect_height_2_;
+      int rect_height_4_;
 
       /** the threshold used to detect depth discontinuities */
-      float distance_threshold_{0.0f};
+      float distance_threshold_;
 
       /** integral image in x-direction */
       IntegralImage2D<float, 3> integral_image_DX_;
@@ -389,43 +406,43 @@ namespace pcl
       IntegralImage2D<float, 3> integral_image_XYZ_;
 
       /** derivatives in x-direction */
-      float *diff_x_{nullptr};
+      float *diff_x_;
       /** derivatives in y-direction */
-      float *diff_y_{nullptr};
+      float *diff_y_;
 
       /** depth data */
-      float *depth_data_{nullptr};
+      float *depth_data_;
 
       /** distance map */
-      float *distance_map_{nullptr};
+      float *distance_map_;
 
       /** \brief Smooth data based on depth (true/false). */
-      bool use_depth_dependent_smoothing_{false};
+      bool use_depth_dependent_smoothing_;
 
       /** \brief Threshold for detecting depth discontinuities */
       float max_depth_change_factor_;
 
       /** \brief */
-      float normal_smoothing_size_{10.0f};
+      float normal_smoothing_size_;
 
       /** \brief True when a dataset has been received and the covariance_matrix data has been initialized. */
-      bool init_covariance_matrix_{false};
+      bool init_covariance_matrix_;
 
       /** \brief True when a dataset has been received and the average 3d gradient data has been initialized. */
-      bool init_average_3d_gradient_{false};
+      bool init_average_3d_gradient_;
 
       /** \brief True when a dataset has been received and the simple 3d gradient data has been initialized. */
-      bool init_simple_3d_gradient_{false};
+      bool init_simple_3d_gradient_;
 
       /** \brief True when a dataset has been received and the depth change data has been initialized. */
-      bool init_depth_change_{false};
+      bool init_depth_change_;
 
       /** \brief Values describing the viewpoint ("pinhole" camera model assumed). For per point viewpoints, inherit
         * from NormalEstimation and provide your own computeFeature (). By default, the viewpoint is set to 0,0,0. */
-      float vpx_{0.0f}, vpy_{0.0f}, vpz_{0.0f};
+      float vpx_, vpy_, vpz_;
 
       /** whether the sensor origin of the input cloud or a user given viewpoint should be used.*/
-      bool use_sensor_origin_{true};
+      bool use_sensor_origin_;
       
       /** \brief This method should get called before starting the actual computation. */
       bool

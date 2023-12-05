@@ -138,25 +138,25 @@ namespace pcl
       ///  *** Parameters *** ///
 
       /** \brief Maximum number of cuts */
-      std::uint32_t max_cuts_{20};
+      std::uint32_t max_cuts_;
 
       /** \brief Minimum segment size for cutting */
-      std::uint32_t min_segment_size_for_cutting_{400};
+      std::uint32_t min_segment_size_for_cutting_;
 
       /** \brief Cut_score threshold */
-      float min_cut_score_{0.16};
+      float min_cut_score_;
 
       /** \brief Use local constrains for cutting */
-      bool use_local_constrains_{true};
+      bool use_local_constrains_;
 
       /** \brief Use directed weights for the cutting */
-      bool use_directed_weights_{true};
+      bool use_directed_weights_;
 
       /** \brief Use clean cutting */
-      bool use_clean_cutting_{false};
+      bool use_clean_cutting_;
 
       /** \brief Iterations for RANSAC */
-      std::uint32_t ransac_itrs_{10000};
+      std::uint32_t ransac_itrs_;
 
 
 /******************************************* Directional weighted RANSAC declarations ******************************************************************/

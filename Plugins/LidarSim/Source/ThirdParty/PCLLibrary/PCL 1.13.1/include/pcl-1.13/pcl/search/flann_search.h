@@ -254,7 +254,7 @@ namespace pcl
           * \param[in] cloud the const boost shared pointer to a PointCloud message
           * \param[in] indices the point indices subset that is to be used from \a cloud
           */
-        bool
+        void
         setInputCloud (const PointCloudConstPtr& cloud, const IndicesConstPtr& indices = IndicesConstPtr ()) override;
 
         using Search<PointT>::nearestKSearch;
@@ -348,22 +348,20 @@ namespace pcl
 
         /** Epsilon for approximate NN search.
           */
-        float eps_{0.0f};
+        float eps_;
         
         /** Number of checks to perform for approximate NN search using the multiple randomized tree index
          */
-        int checks_{32};
+        int checks_;
         
-        bool input_copied_for_flann_{false};
+        bool input_copied_for_flann_;
 
-        PointRepresentationConstPtr point_representation_{nullptr};
+        PointRepresentationConstPtr point_representation_;
 
-        int dim_{0};
+        int dim_;
 
         Indices index_mapping_;
-        bool identity_mapping_{false};
-
-        std::size_t total_nr_points_{0};
+        bool identity_mapping_;
 
     };
   }

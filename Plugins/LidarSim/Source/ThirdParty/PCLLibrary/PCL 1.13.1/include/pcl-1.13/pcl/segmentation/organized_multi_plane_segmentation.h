@@ -89,7 +89,16 @@ namespace pcl
       using PlaneRefinementComparatorConstPtr = typename PlaneRefinementComparator::ConstPtr;
 
       /** \brief Constructor for OrganizedMultiPlaneSegmentation. */
-      OrganizedMultiPlaneSegmentation() = default;
+      OrganizedMultiPlaneSegmentation () :
+        normals_ (), 
+        min_inliers_ (1000), 
+        angular_threshold_ (pcl::deg2rad (3.0)), 
+        distance_threshold_ (0.02),
+        maximum_curvature_ (0.001),
+        project_points_ (false), 
+        compare_ (new PlaneComparator ()), refinement_compare_ (new PlaneRefinementComparator ())
+      {
+      }
 
       /** \brief Destructor for OrganizedMultiPlaneSegmentation. */
       
@@ -270,28 +279,28 @@ namespace pcl
     protected:
 
       /** \brief A pointer to the input normals */
-      PointCloudNConstPtr normals_{nullptr};
+      PointCloudNConstPtr normals_;
 
       /** \brief The minimum number of inliers required for each plane. */
-      unsigned min_inliers_{1000};
+      unsigned min_inliers_;
 
       /** \brief The tolerance in radians for difference in normal direction between neighboring points, to be considered part of the same plane. */
-      double angular_threshold_{pcl::deg2rad (3.0)};
+      double angular_threshold_;
 
       /** \brief The tolerance in meters for difference in perpendicular distance (d component of plane equation) to the plane between neighboring points, to be considered part of the same plane. */
-      double distance_threshold_{0.02};
+      double distance_threshold_;
 
       /** \brief The tolerance for maximum curvature after fitting a plane.  Used to remove smooth, but non-planar regions. */
-      double maximum_curvature_{0.001};
+      double maximum_curvature_;
 
       /** \brief Whether or not points should be projected to the plane, or left in the original 3D space. */
-      bool project_points_{false};
+      bool project_points_;
 
       /** \brief A comparator for comparing neighboring pixels' plane equations. */
-      PlaneComparatorPtr compare_{new PlaneComparator};
+      PlaneComparatorPtr compare_;
 
       /** \brief A comparator for use on the refinement step.  Compares points to regions segmented in the first pass. */
-      PlaneRefinementComparatorPtr refinement_compare_{new PlaneRefinementComparator};
+      PlaneRefinementComparatorPtr refinement_compare_;
 
       /** \brief Class getName method. */
       virtual std::string

@@ -53,7 +53,7 @@ namespace pcl
     public:
 
       SynchronizedQueue () :
-        queue_()  { }
+        queue_(), request_to_end_(false), enqueue_data_(true) { }
 
       void
       enqueue (const T& data)
@@ -127,7 +127,7 @@ namespace pcl
       mutable std::mutex mutex_;       // The mutex to synchronise on
       std::condition_variable cond_;   // The condition to wait for
 
-      bool request_to_end_{false};
-      bool enqueue_data_{true};
+      bool request_to_end_;
+      bool enqueue_data_;
   };
 }

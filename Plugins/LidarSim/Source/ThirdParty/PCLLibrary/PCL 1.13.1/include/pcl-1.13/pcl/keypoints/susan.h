@@ -93,6 +93,8 @@ namespace pcl
         , angular_threshold_ (angular_threshold)
         , intensity_threshold_ (intensity_threshold)
         , normals_ (new pcl::PointCloud<NormalT>)
+        , threads_ (0)
+        , label_idx_ (-1)
       {
         name_ = "SUSANKeypoint";
         search_radius_ = radius;
@@ -180,7 +182,7 @@ namespace pcl
       float intensity_threshold_;
       float tolerance_;
       PointCloudNConstPtr normals_;
-      unsigned int threads_{0};
+      unsigned int threads_;
       bool geometric_validation_;
       bool nonmax_;
       /// intensity field accessor
@@ -188,7 +190,7 @@ namespace pcl
       /** \brief Set to a value different than -1 if the output cloud has a "label" field and we have 
         * to save the keypoints indices. 
         */
-      int label_idx_{-1};
+      int label_idx_;
       /** \brief The list of fields present in the output point cloud data. */
       std::vector<pcl::PCLPointField> out_fields_;
       pcl::common::IntensityFieldAccessor<PointOutT> intensity_out_;

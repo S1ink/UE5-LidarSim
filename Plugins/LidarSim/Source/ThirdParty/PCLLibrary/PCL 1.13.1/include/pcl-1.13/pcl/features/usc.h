@@ -83,7 +83,9 @@ namespace pcl
 
       /** \brief Constructor. */
       UniqueShapeContext () :
-        radii_interval_(0), theta_divisions_(0), phi_divisions_(0), volume_lut_(0)
+        radii_interval_(0), theta_divisions_(0), phi_divisions_(0), volume_lut_(0),
+        azimuth_bins_(14), elevation_bins_(14), radius_bins_(10),
+        min_radius_(0.1), point_density_radius_(0.1), descriptor_length_ (), local_radius_ (2.0)
       {
         feature_name_ = "UniqueShapeContext";
         search_radius_ = 2.0;
@@ -165,25 +167,25 @@ namespace pcl
       std::vector<float> volume_lut_;
 
       /** \brief Bins along the azimuth dimension. */
-      std::size_t azimuth_bins_{14};
+      std::size_t azimuth_bins_;
 
       /** \brief Bins along the elevation dimension. */
-      std::size_t elevation_bins_{14};
+      std::size_t elevation_bins_;
 
       /** \brief Bins along the radius dimension. */
-      std::size_t radius_bins_{10};
+      std::size_t radius_bins_;
 
       /** \brief Minimal radius value. */
-      double min_radius_{0.1};
+      double min_radius_;
 
       /** \brief Point density radius. */
-      double point_density_radius_{0.1};
+      double point_density_radius_;
 
       /** \brief Descriptor length. */
-      std::size_t descriptor_length_{};
+      std::size_t descriptor_length_;
 
       /** \brief Radius to compute local RF. */
-      double local_radius_{2.0};
+      double local_radius_;
   };
 }
 

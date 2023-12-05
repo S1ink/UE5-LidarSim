@@ -72,9 +72,8 @@ namespace pcl
     public:
       /** \brief Initialize the scheduler and set the number of threads to use.
         * \param nr_threads the number of hardware threads to use (0 sets the value back to automatic)
-        * \param chunk_size PCL will use dynamic scheduling with this chunk size. Setting it too low will lead to more parallelization overhead. Setting it too high will lead to a worse balancing between the threads.
         */
-      NormalEstimationOMP (unsigned int nr_threads = 0, int chunk_size = 256): chunk_size_(chunk_size)
+      NormalEstimationOMP (unsigned int nr_threads = 0)
       {
         feature_name_ = "NormalEstimationOMP";
 
@@ -91,8 +90,6 @@ namespace pcl
       /** \brief The number of threads the scheduler should use. */
       unsigned int threads_;
 
-      /** \brief Chunk size for (dynamic) scheduling. */
-      int chunk_size_;
     private:
       /** \brief Estimate normals for all points given in <setInputCloud (), setIndices ()> using the surface in
         * setSearchSurface () and the spatial locator in setSearchMethod ()

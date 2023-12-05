@@ -16,7 +16,8 @@ public class LidarSim : ModuleRules
             "CoreUObject",
             "Engine",
             "Projects",
-            "PCLLibrary"
+            "PCLLibrary",
+			"SickXDLibrary"
         } );
 		PrivateDependencyModuleNames.AddRange( new string[] {
 			"PhysicsCore",

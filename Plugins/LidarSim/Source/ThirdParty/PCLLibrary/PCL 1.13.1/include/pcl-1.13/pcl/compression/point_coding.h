@@ -60,7 +60,11 @@ class PointCoding
 
   public:
     /** \brief Constructor. */
-    PointCoding () = default;
+    PointCoding () :
+      output_ (),
+      pointCompressionResolution_ (0.001f) // 1mm
+    {
+    }
 
     /** \brief Empty class constructor. */
     virtual
@@ -177,7 +181,7 @@ class PointCoding
 
   protected:
     /** \brief Pointer to output point cloud dataset. */
-    PointCloudPtr output_{nullptr};
+    PointCloudPtr output_;
 
     /** \brief Vector for storing differential point information  */
     std::vector<char> pointDiffDataVector_;
@@ -186,7 +190,7 @@ class PointCoding
     std::vector<char>::const_iterator pointDiffDataVectorIterator_;
 
     /** \brief Precision of point coding*/
-    float pointCompressionResolution_{0.001f};
+    float pointCompressionResolution_;
 };
 
 } // namespace octree

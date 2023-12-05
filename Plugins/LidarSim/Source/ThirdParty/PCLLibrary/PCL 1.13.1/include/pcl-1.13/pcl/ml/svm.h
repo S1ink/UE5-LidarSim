@@ -64,9 +64,9 @@ struct svm_scaling {
   struct svm_node* obj;
 
   // max features scaled
-  int max{0};
+  int max;
 
-  svm_scaling() = default;
+  svm_scaling() : max(0) {}
 };
 
 enum { C_SVC, NU_SVC, ONE_CLASS, EPSILON_SVR, NU_SVR }; /* svm_type */

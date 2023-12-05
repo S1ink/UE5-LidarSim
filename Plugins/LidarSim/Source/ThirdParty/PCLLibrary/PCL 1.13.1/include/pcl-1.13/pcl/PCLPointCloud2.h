@@ -143,7 +143,7 @@ namespace pcl
     for (std::size_t i = 0; i < v.data.size (); ++i)
     {
       s << "  data[" << i << "]: ";
-      s << "  " << static_cast<int>(v.data[i]) << std::endl;
+      s << "  " << v.data[i] << std::endl;
     }
     s << "is_dense: ";
     s << "  " << v.is_dense << std::endl;

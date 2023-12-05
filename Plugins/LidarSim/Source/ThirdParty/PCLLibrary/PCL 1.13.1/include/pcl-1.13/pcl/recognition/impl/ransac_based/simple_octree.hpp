@@ -180,7 +180,11 @@ SimpleOctree<NodeData, NodeDataCreator, Scalar>::Node::makeNeighbors (Node* node
 
 
 template<typename NodeData, typename NodeDataCreator, typename Scalar> inline
-SimpleOctree<NodeData, NodeDataCreator, Scalar>::SimpleOctree () = default;
+SimpleOctree<NodeData, NodeDataCreator, Scalar>::SimpleOctree ()
+: tree_levels_ (0),
+  root_ (nullptr)
+{
+}
 
 
 template<typename NodeData, typename NodeDataCreator, typename Scalar> inline

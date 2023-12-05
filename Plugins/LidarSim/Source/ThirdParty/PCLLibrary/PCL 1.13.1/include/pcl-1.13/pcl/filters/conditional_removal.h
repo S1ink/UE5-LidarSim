@@ -93,7 +93,7 @@ namespace pcl
       using ConstPtr = shared_ptr<const ComparisonBase<PointT> >;
 
       /** \brief Constructor. */
-      ComparisonBase () = default;
+      ComparisonBase () : capable_ (false), offset_ (), op_ () {}
 
       /** \brief Destructor. */
       virtual ~ComparisonBase () = default;
@@ -111,16 +111,16 @@ namespace pcl
 
     protected:
       /** \brief True if capable. */
-      bool capable_{false};
+      bool capable_;
 
       /** \brief Field name to compare data on. */
       std::string field_name_;
 
       /** \brief The data offset. */
-      std::uint32_t offset_{0};
+      std::uint32_t offset_;
 
       /** \brief The comparison operator type. */
-      ComparisonOps::CompareOp op_{ComparisonOps::GT};
+      ComparisonOps::CompareOp op_;
   };
 
   //////////////////////////////////////////////////////////////////////////////////////////
@@ -455,7 +455,7 @@ namespace pcl
       using ConstPtr = shared_ptr<const ConditionBase<PointT> >;
 
       /** \brief Constructor. */
-      ConditionBase () :  comparisons_ (), conditions_ ()
+      ConditionBase () : capable_ (true), comparisons_ (), conditions_ ()
       {
       }
 
@@ -489,7 +489,7 @@ namespace pcl
 
     protected:
       /** \brief True if capable. */
-      bool capable_{true};
+      bool capable_;
 
       /** \brief The collection of all comparisons that need to be verified. */
       std::vector<ComparisonBaseConstPtr> comparisons_;
@@ -617,7 +617,7 @@ namespace pcl
         * \param extract_removed_indices extract filtered indices from indices vector
         */
       ConditionalRemoval (int extract_removed_indices = false) :
-        Filter<PointT>::Filter (extract_removed_indices),  condition_ (),
+        Filter<PointT>::Filter (extract_removed_indices), capable_ (false), keep_organized_ (false), condition_ (),
         user_filter_value_ (std::numeric_limits<float>::quiet_NaN ())
       {
         filter_name_ = "ConditionalRemoval";
@@ -671,12 +671,12 @@ namespace pcl
       applyFilter (PointCloud &output) override;
 
       /** \brief True if capable. */
-      bool capable_{false};
+      bool capable_;
 
       /** \brief Keep the structure of the data organized, by setting the
         * filtered points to the a user given value (NaN by default).
         */
-      bool keep_organized_{false};
+      bool keep_organized_;
 
       /** \brief The condition to use for filtering */
       ConditionBasePtr condition_;

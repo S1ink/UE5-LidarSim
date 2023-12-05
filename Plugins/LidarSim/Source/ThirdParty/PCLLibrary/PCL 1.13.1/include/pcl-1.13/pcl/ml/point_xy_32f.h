@@ -47,7 +47,7 @@ namespace pcl {
 class PCL_EXPORTS PointXY32f {
 public:
   /** Constructor. */
-  inline PointXY32f() = default;
+  inline PointXY32f() : x(0.0f), y(0.0f) {}
   /** Destructor. */
   inline virtual ~PointXY32f() = default;
 
@@ -85,9 +85,9 @@ public:
 
 public:
   /** The x-coordinate of the point. */
-  float x{0.0f};
+  float x;
   /** The y-coordinate of the point. */
-  float y{0.0f};
+  float y;
 };
 
 } // namespace pcl

@@ -161,13 +161,13 @@ namespace pcl
                     const float max_x, const float max_y, const KeypointT& key_pt);
 
       /** \brief Specifies whether rotation invariance is enabled. */
-      bool rotation_invariance_enabled_{true};
+      bool rotation_invariance_enabled_;
       
       /** \brief Specifies whether scale invariance is enabled. */
-      bool scale_invariance_enabled_{true};
+      bool scale_invariance_enabled_;
 
       /** \brief Specifies the scale of the pattern. */
-      const float pattern_scale_{1.0f};
+      const float pattern_scale_;
   
       /** \brief the input cloud. */
       PointCloudInTConstPtr input_cloud_;
@@ -176,7 +176,7 @@ namespace pcl
       KeypointPointCloudTPtr keypoints_;
 
       // TODO: set
-      float scale_range_{0.0f};
+      float scale_range_;
 
       // Some helper structures for the Brisk pattern representation
       struct BriskPatternPoint
@@ -214,41 +214,41 @@ namespace pcl
       BriskPatternPoint* pattern_points_;
       
       /** Total number of collocation points. */
-      unsigned int points_{0u};
+      unsigned int points_;
       
       /** Discretization of the rotation look-up. */
-		  const unsigned int n_rot_{1024};
+		  const unsigned int n_rot_;
       
       /** Lists the scaling per scale index [scale]. */
-      float* scale_list_{nullptr};
+      float* scale_list_;
       
       /** Lists the total pattern size per scale index [scale]. */
-      unsigned int* size_list_{nullptr};
+      unsigned int* size_list_;
       
       /** Scales discretization. */
-      const unsigned int scales_{64};
+      const unsigned int scales_;
       
       /** Span of sizes 40->4 Octaves - else, this needs to be adjusted... */
-      const float scalerange_{30};
+      const float scalerange_;
 
       // general
-      const float basic_size_{12.0};
+      const float basic_size_;
 
       // pairs
       /** Number of uchars the descriptor consists of. */
-      int strings_{0};
+      int strings_;
       /** Short pair maximum distance. */
-      float d_max_{0.0f};
+      float d_max_;
       /** Long pair maximum distance. */
-      float d_min_{0.0f};
+      float d_min_;
       /** d<_d_max. */
       BriskShortPair* short_pairs_;
       /** d>_d_min. */
       BriskLongPair* long_pairs_;
       /** Number of short pairs. */
-      unsigned int no_short_pairs_{0};
+      unsigned int no_short_pairs_;
       /** Number of long pairs. */
-      unsigned int no_long_pairs_{0};
+      unsigned int no_long_pairs_;
 
       /** \brief Intensity field accessor. */
       IntensityT intensity_;

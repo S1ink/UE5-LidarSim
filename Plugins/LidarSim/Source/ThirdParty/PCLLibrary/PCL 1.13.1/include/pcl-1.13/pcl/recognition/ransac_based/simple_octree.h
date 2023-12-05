@@ -198,11 +198,11 @@ namespace pcl
         insertNeighbors (Node* node);
 
       protected:
-        Scalar voxel_size_{0.0f}, bounds_[6]{};
-        int tree_levels_{0};
-        Node* root_{nullptr};
+        Scalar voxel_size_, bounds_[6];
+        int tree_levels_;
+        Node* root_;
         std::vector<Node*> full_leaves_;
-        NodeDataCreator* node_data_creator_{nullptr};
+        NodeDataCreator* node_data_creator_;
     };
   } // namespace recognition
 } // namespace pcl

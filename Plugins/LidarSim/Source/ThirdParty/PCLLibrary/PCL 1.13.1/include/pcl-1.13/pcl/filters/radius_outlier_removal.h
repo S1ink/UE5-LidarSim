@@ -87,7 +87,9 @@ namespace pcl
         */
       RadiusOutlierRemoval (bool extract_removed_indices = false) :
         FilterIndices<PointT> (extract_removed_indices),
-        searcher_ ()
+        searcher_ (),
+        search_radius_ (0.0),
+        min_pts_radius_ (1)
       {
         filter_name_ = "RadiusOutlierRemoval";
       }
@@ -136,12 +138,6 @@ namespace pcl
         return (min_pts_radius_);
       }
 
-      /** \brief Provide a pointer to the search object.
-        * Calling this is optional. If not called, the search method will be chosen automatically.
-        * \param[in] searcher a pointer to the spatial search object.
-        */
-      inline void
-      setSearchMethod (const SearcherPtr &searcher) { searcher_ = searcher; }
     protected:
       using PCLBase<PointT>::input_;
       using PCLBase<PointT>::indices_;
@@ -173,10 +169,10 @@ namespace pcl
       SearcherPtr searcher_;
 
       /** \brief The nearest neighbors search radius for each point. */
-      double search_radius_{0.0};
+      double search_radius_;
 
       /** \brief The minimum number of neighbors that a point needs to have in the given search radius to be considered an inlier. */
-      int min_pts_radius_{1};
+      int min_pts_radius_;
   };
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -204,7 +200,8 @@ namespace pcl
     public:
       /** \brief Empty constructor. */
       RadiusOutlierRemoval (bool extract_removed_indices = false) :
-        FilterIndices<pcl::PCLPointCloud2>::FilterIndices (extract_removed_indices)
+        FilterIndices<pcl::PCLPointCloud2>::FilterIndices (extract_removed_indices),
+        search_radius_ (0.0), min_pts_radius_ (1)
       {
         filter_name_ = "RadiusOutlierRemoval";
       }
@@ -246,12 +243,12 @@ namespace pcl
 
     protected:
       /** \brief The nearest neighbors search radius for each point. */
-      double search_radius_{0.0};
+      double search_radius_;
 
       /** \brief The minimum number of neighbors that a point needs to have in the given search radius to be considered
         * an inlier.
         */
-      int min_pts_radius_{1};
+      int min_pts_radius_;
 
       /** \brief A pointer to the spatial search object. */
       KdTreePtr searcher_;

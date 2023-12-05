@@ -68,7 +68,9 @@ namespace pcl
       /** \brief Constructor. 
         * Sets sigma_s_ to 0 and sigma_r_ to MAXDBL
         */
-      BilateralFilter () : tree_ ()
+      BilateralFilter () : sigma_s_ (0), 
+                           sigma_r_ (std::numeric_limits<double>::max ()),
+                           tree_ ()
       {
       }
       /** \brief Compute the intensity average for a single point
@@ -128,9 +130,9 @@ namespace pcl
       { return (std::exp (- (x*x)/(2*sigma*sigma))); }
 
       /** \brief The half size of the Gaussian bilateral filter window (e.g., spatial extents in Euclidean). */
-      double sigma_s_{0.0};
+      double sigma_s_;
       /** \brief The standard deviation of the bilateral filter (e.g., standard deviation in intensity). */
-      double sigma_r_{std::numeric_limits<double>::max ()};
+      double sigma_r_;
 
       /** \brief A pointer to the spatial search object. */
       KdTreePtr tree_;
