@@ -5,9 +5,9 @@ Saved
 .vscode
 .vs
 Boost 1.82
-*.lib
-*.dll
-*.exp
+# *.lib
+# *.dll
+# *.exp
 *.VC.db
 *.opensdf
 *.opendb
