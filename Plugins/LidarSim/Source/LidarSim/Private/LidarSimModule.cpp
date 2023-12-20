@@ -17,3 +17,13 @@ void FLidarSimModule::ShutdownModule() {}
 
 
 IMPLEMENT_MODULE(FLidarSimModule, LidarSimModule)
+
+
+//#include <exception>
+//THIRD_PARTY_INCLUDES_START
+//#include <boost/throw_exception.hpp>
+//THIRD_PARTY_INCLUDES_END
+//
+//namespace boost {
+//	void boost::throw_exception(class std::exception const&) {}
+//}

@@ -272,7 +272,7 @@ static void genTraceBounds(
 template<typename fp_T = double>
 static void scan(
 	const AActor* src, const TArray<UE::Math::TVector<fp_T>>& directions, const double range,
-	std::function<void(const FHitResult&, const UE::Math::TVector<fp_T>&)> export_
+	std::function<void(const FHitResult&, int idx)> export_
 ) {
 	ASSERT_FP_TYPE(fp_T);
 
@@ -306,7 +306,7 @@ static void scan(
 		src->GetWorld()->LineTraceSingleByObjectType( result, start, end, query_params, trace_params );
 
 		if (result.bBlockingHit) {
-			export_(result, directions[i]);
+			export_(result, i);
 		}
 
 	}
@@ -343,8 +343,8 @@ void ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray
 		UE_LOG(LidarSimComponent, Warning, TEXT("[SCAN]: Hits output array contains prexisting elements."));
 	}
 	scan<double>(this->GetOwner(), directions, max_range,
-		[&hits, &noise_distance_scale](const FHitResult& result, const FVector& src_dir) {
-			hits.Emplace(result.Location + (src_dir * (FMath::FRand() * noise_distance_scale * result.Distance)), 1.0);
+		[&](const FHitResult& result, int idx) {
+			hits.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)), 1.0);
 		}
 	);
 }
@@ -354,8 +354,8 @@ void ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray
 	if (intensities.Num() != 0) {				UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
 	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
 	scan<double>(this->GetOwner(), directions, max_range,
-		[&positions, &intensities, &noise_distance_scale](const FHitResult& result, const FVector& src_dir) {
-			positions.Emplace(result.Location + (src_dir * (FMath::FRand() * noise_distance_scale * result.Distance)));
+		[&](const FHitResult& result, int idx) {
+			positions.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)));
 			intensities.Add(1.0);
 		}
 	);
@@ -367,8 +367,8 @@ void ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray
 	if (positions.Num() != generated_colors.Num()) {	UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
 	constexpr float intensity = 1.f;
 	scan<double>(this->GetOwner(), directions, max_range,
-		[&positions, &generated_colors, &intensity_albedo, &noise_distance_scale](const FHitResult& result, const FVector& src_dir) {
-			positions.Emplace(result.Location + (src_dir * (FMath::FRand() * noise_distance_scale * result.Distance)));
+		[&](const FHitResult& result, int idx) {
+			positions.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)));
 			generated_colors.Add(intensity * intensity_albedo.R);	// there is probably a more optimal way to add 4 units to the array
 			generated_colors.Add(intensity * intensity_albedo.G);
 			generated_colors.Add(intensity * intensity_albedo.B);
@@ -440,5 +440,173 @@ void ULidarSimulationComponent::RecolorPoints(
 	}*/
 	for (int i = 0; i < inliers.Num(); i++) {
 		color_bytes[inliers[i]] = inlier_color.Bits;
+	}
+}
+
+struct EIGEN_ALIGN16 PointXYZIR {
+	PCL_ADD_POINT4D;
+
+	float intensity;
+	uint16_t ring;
+
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZIR,
+	(float, x, x)
+	(float, y, y)
+	(float, z, z)
+	(float, intensity, intensity)
+	(uint16_t, ring, ring)
+)
+
+void ULidarSimulationComponent::RingExport(
+	const TArray<FVector>& directions, const TArray<int>& ring_ids, const FString& fname,
+	const float max_range, const float noise_distance_scale
+) {
+	if (directions.Num() == ring_ids.Num() && !fname.IsEmpty()) {
+		pcl::PointCloud<PointXYZIR>::Ptr cloud{ new pcl::PointCloud<PointXYZIR> };
+		cloud->points.reserve(directions.Num());
+		scan<double>(this->GetOwner(), directions, max_range,
+			[&](const FHitResult& result, int idx) {
+				const FVector point = result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance));
+				cloud->points.emplace_back( PointXYZIR{
+					(float)point.X,
+					(float)point.Y,
+					(float)point.Z,
+					1.f, 0.f, (uint16_t)ring_ids[idx] }
+				);
+			}
+		);
+		cloud->width = cloud->points.size();
+		cloud->height = 1;
+		pcl::io::savePCDFileBinaryCompressed(std::string(TCHAR_TO_UTF8(*fname)), *cloud);
+	}
+}
+
+
+
+
+
+
+
+
+
+#include <chrono>
+
+UPCDWriter::~UPCDWriter() {
+	if (this->head_buff) delete this->head_buff;
+	this->closeIO();
+}
+
+bool UPCDWriter::Open(const FString& fname) {
+	if(this->IsOpen()) {
+		this->Close();
+	}
+	return this->setFile(TCHAR_TO_UTF8(*fname));
+}
+void UPCDWriter::Close() {
+	this->closeIO();
+}
+bool UPCDWriter::IsOpen() {
+	return this->fio.is_open();
+}
+bool UPCDWriter::Append(const FString& fname, const TArray<FLinearColor>& positions, const FVector3f pos, const FQuat4f orient, bool compress) {
+	using namespace mem_utils;
+	if (this->IsOpen() && !this->status_bits) {
+		memSwap(this->swap_cloud, const_cast<TArray<FLinearColor>&>(positions));
+		pcl::toPCLPointCloud2(this->swap_cloud, this->write_cloud);
+		const char* fn = fname.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*fname);
+		this->addCloud(
+			this->write_cloud,
+			Eigen::Vector4f{ pos.X, pos.Y, pos.Z, 1.f },
+			Eigen::Quaternionf{ orient.W, orient.X, orient.Y, orient.Z },
+			compress,
+			fn
+		);
+		memSwap(this->swap_cloud, const_cast<TArray<FLinearColor>&>(positions));
+		return true;
+	}
+	return false;
+}
+
+bool UPCDWriter::setFile(const char* fname) {
+	this->fio.open(fname, OPEN_MODES);
+	if (!this->fio.is_open()) {
+		this->status_bits |= 0b1;	// fio fail
+		return false;
+	}
+	this->fio.seekp(0, std::ios::end);
+	const spos_t end = this->fio.tellp();
+	if (end < 1024) {
+		this->append_pos = 0;
+	} else {    // maybe also add a "end % 512 == 0" check
+		this->append_pos = end - (spos_t)1024;
+	}
+	return true;
+}
+void UPCDWriter::closeIO() {
+	if (this->fio.is_open()) {
+		this->fio.close();
+	}
+	this->status_bits &= ~0b1;
+}
+void UPCDWriter::addCloud(const pcl::PCLPointCloud2& cloud, const Eigen::Vector4f& origin, const Eigen::Quaternionf& orient, bool compress, const char* pcd_fname) {
+	if (this->IsOpen() && !(this->status_bits & 0b1)) {
+		const spos_t start = this->append_pos;
+
+		if (!this->head_buff) { this->head_buff = new pcl::io::TARHeader{}; }
+		memset(this->head_buff, 0, sizeof(pcl::io::TARHeader));	// buffer where the header will be so that we can start writing the file data
+
+		this->fio.seekp(start);
+		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);	// write blank header
+		const spos_t pcd_beg = this->fio.tellp();
+
+		int status;
+		if (compress) { status = this->writer.writeBinaryCompressed(this->fio, cloud, origin, orient); }
+		else { status = this->writer.writeBinary(this->fio, cloud, origin, orient); }
+		if (status) return;	// keep the same append position so we overwrite next time
+
+		const spos_t pcd_end = this->fio.tellp();
+		const size_t
+			flen = pcd_end - pcd_beg,
+			padding = (512 - flen % 512);
+
+		this->fio.write(reinterpret_cast<char*>(this->head_buff), padding);	// pad to 512 byte chunk
+		this->append_pos = this->fio.tellp();	// if we add another file, it should start here and overwrite the end padding
+
+		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);		// append 2 zeroed chunks
+		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);
+
+		uint64_t mseconds = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::system_clock::now().time_since_epoch()
+				).count();
+
+		if (pcd_fname) {
+			snprintf(this->head_buff->file_name, 100, pcd_fname);
+		} else {
+			snprintf(this->head_buff->file_name, 100, "pc_%llx.pcd", mseconds);
+		}
+		snprintf(this->head_buff->file_mode, 8, "0100777");
+		snprintf(this->head_buff->uid, 8, "0000000");
+		snprintf(this->head_buff->gid, 8, "0000000");
+		snprintf(this->head_buff->file_size, 12, "%011llo", (uint64_t)flen);
+		snprintf(this->head_buff->mtime, 12, "%011llo", mseconds / 1000);
+		sprintf(this->head_buff->ustar, "ustar");
+		sprintf(this->head_buff->ustar_version, "00");
+		this->head_buff->file_type[0] = '0';
+
+		uint64_t xsum = 0;
+		for (char* p = reinterpret_cast<char*>(this->head_buff); p < this->head_buff->chksum; p++)
+			{ xsum += *p & 0xff; }
+		xsum += (' ' * 8) + this->head_buff->file_type[0];
+		for (char* p = this->head_buff->ustar; p < this->head_buff->uname; p++)		// the only remaining part that we wrote to was ustar and version
+			{ xsum += *p & 0xff; }
+		snprintf(this->head_buff->chksum, 7, "%06llo", xsum);
+		this->head_buff->chksum[7] = ' ';
+
+		this->fio.seekp(start);
+		this->fio.write(reinterpret_cast<char*>(this->head_buff),
+			(this->head_buff->uname - this->head_buff->file_name));		// only re-write the byte range that we have modified
 	}
 }
