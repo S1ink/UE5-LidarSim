@@ -17,12 +17,99 @@ THIRD_PARTY_INCLUDES_START
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/segmentation/progressive_morphological_filter.h>
+#include <pcl/filters/morphological_filter.h>
 #include <pcl/filters/extract_indices.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/crop_box.h>
 #include <pcl/common/transforms.h>
 THIRD_PARTY_INCLUDES_END;
 
 #include "TestUtils.h"
 
+
+//#include <vcruntime_new.h>
+//template void pcl::ProgressiveMorphologicalFilter<pcl::PointXYZ>::extract(pcl::Indices& g);
+
+template<typename PointT>
+void progressiveMorphologicalExtract(
+	const pcl::PointCloud<PointT>& cloud_, const pcl::Indices& selection, pcl::Indices& ground,
+	float base_,
+	int max_window_size_,
+	float cell_size_,
+	float initial_distance_,
+	float max_distance_,
+	float slope_,
+	bool exponential_
+) {
+	// Compute the series of window sizes and height thresholds
+	std::vector<float> height_thresholds;
+	std::vector<float> window_sizes;
+	int iteration = 0;
+	float window_size = 0.0f;
+	float height_threshold = 0.0f;
+
+	while (window_size < max_window_size_)
+	{
+		// Determine the initial window size.
+		if (exponential_)
+			window_size = cell_size_ * (2.0f * std::pow(base_, iteration) + 1.0f);
+		else
+			window_size = cell_size_ * (2.0f * (iteration + 1) * base_ + 1.0f);
+
+		// Calculate the height threshold to be used in the next iteration.
+		if (iteration == 0)
+			height_threshold = initial_distance_;
+		else
+			height_threshold = slope_ * (window_size - window_sizes[iteration - 1]) * cell_size_ + initial_distance_;
+
+		// Enforce max distance on height threshold
+		if (height_threshold > max_distance_)
+			height_threshold = max_distance_;
+
+		window_sizes.push_back(window_size);
+		height_thresholds.push_back(height_threshold);
+
+		iteration++;
+	}
+
+	// Ground indices are initially limited to those points in the input cloud we
+	// wish to process
+	if (selection.size() > 0 && selection.size() <= cloud_.size()) {
+		ground = selection;
+	} else {
+		ground.resize(cloud_.size());
+		for (std::size_t i = 0; i < cloud_.size(); i++) {
+			ground[i] = i;
+		}
+	}
+
+	// Progressively filter ground returns using morphological open
+	for (std::size_t i = 0; i < window_sizes.size(); ++i)
+	{
+		// Limit filtering to those points currently considered ground returns
+		typename pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+		pcl::copyPointCloud<PointT>(cloud_, ground, *cloud);
+
+		// Create new cloud to hold the filtered results. Apply the morphological
+		// opening operation at the current window size.
+		typename pcl::PointCloud<PointT>::Ptr cloud_f(new pcl::PointCloud<PointT>);
+		pcl::applyMorphologicalOperator<PointT>(cloud, window_sizes[i], pcl::MorphologicalOperators::MORPH_OPEN, *cloud_f);
+
+		// Find indices of the points whose difference between the source and
+		// filtered point clouds is less than the current height threshold.
+		pcl::Indices pt_indices;
+		for (std::size_t p_idx = 0; p_idx < ground.size(); ++p_idx)
+		{
+			float diff = (*cloud)[p_idx].z - (*cloud_f)[p_idx].z;
+			if (diff < height_thresholds[i])
+				pt_indices.push_back(ground[p_idx]);
+		}
+
+		// Ground is now limited to pt_indices
+		ground.swap(pt_indices);
+	}
+}
 
 namespace pcl_api_utils {
 
@@ -320,8 +407,32 @@ static void scan(
 DECLARE_STATS_GROUP(TEXT("LidarSimulation"), STATGROUP_LidarSim, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("Bulk Scan"), STAT_BulkScan, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Segment Plane"), STAT_SegmentPoip, STATGROUP_LidarSim);
+DECLARE_CYCLE_STAT(TEXT("Voxelize"), STAT_Voxelize, STATGROUP_LidarSim);
+DECLARE_CYCLE_STAT(TEXT("Filter Coords"), STAT_FilterCoords, STATGROUP_LidarSim);
+DECLARE_CYCLE_STAT(TEXT("Filter Range"), STAT_FilterRange, STATGROUP_LidarSim);
+DECLARE_CYCLE_STAT(TEXT("Progressive Morphological Filter"), STAT_PMFilter, STATGROUP_LidarSim);
 
 DEFINE_LOG_CATEGORY(LidarSimComponent);
+
+
+//UScanResult::UScanResult() {
+//	this->inst = UScanResult::instance++;
+//	UE_LOG(LidarSimComponent, Warning, TEXT("UScanResult Instance Created[%d]"), this->inst);
+//}
+//UScanResult::~UScanResult() {
+//	UE_LOG(LidarSimComponent, Warning, TEXT("UScanResult Instance Destroyed[%d]"), this->inst);
+//}
+//
+//TArray<FLinearColor>& UScanResult::GetCloud() {
+//	return this->cloud;
+//}
+//TArray<float>& UScanResult::GetRanges() {
+//	return this->ranges;
+//}
+//void UScanResult::Clear() {
+//	this->clear();
+//}
+
 
 
 void ULidarSimulationComponent::ConvertToRadians(TArray<float>& thetas, TArray<float>& phis) {
@@ -337,42 +448,52 @@ void ULidarSimulationComponent::GenerateDirections(const TArray<float>& thetas, 
 	sphericalVectorProduct<float, double>(thetas, phis, directions);
 }
 
-void ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range, const float noise_distance_scale) {
+//void ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range, const float noise_distance_scale) {
+//	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
+//	if (hits.Num() != 0) {
+//		UE_LOG(LidarSimComponent, Warning, TEXT("[SCAN]: Hits output array contains prexisting elements."));
+//	}
+//	scan<double>(this->GetOwner(), directions, max_range,
+//		[&](const FHitResult& result, int idx) {
+//			hits.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)), 1.0);
+//		}
+//	);
+//}
+//void ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range, const float noise_distance_scale) {
+//	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
+//	if (positions.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
+//	if (intensities.Num() != 0) {				UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
+//	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
+//	scan<double>(this->GetOwner(), directions, max_range,
+//		[&](const FHitResult& result, int idx) {
+//			positions.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)));
+//			intensities.Add(1.0);
+//		}
+//	);
+//}
+void ULidarSimulationComponent::Scan(
+	const TArray<FVector>& directions, /*UScanResult* cloud_out,*/
+	TArray<FLinearColor>& cloud_out, TArray<float>& ranges_out,
+	const float max_range, const float noise_distance_scale
+) {
 	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
-	if (hits.Num() != 0) {
-		UE_LOG(LidarSimComponent, Warning, TEXT("[SCAN]: Hits output array contains prexisting elements."));
-	}
+	/*if (!cloud_out) {
+		UE_LOG(LidarSimComponent, Error, TEXT("Invalid scanning buffer (nullptr)!"));
+		return;
+	}*/
+	/*if (cloud_out->cloud.Num() != 0 || cloud_out->ranges.Num() != 0) {
+		UE_LOG(LidarSimComponent, Warning, TEXT("Scan result may have contained prexisting elements!"));
+		cloud_out->clear();
+	}*/
+	cloud_out.SetNum(0);
+	ranges_out.SetNum(0);
+	cloud_out.Reserve(directions.Num());
+	ranges_out.Reserve(directions.Num());
 	scan<double>(this->GetOwner(), directions, max_range,
 		[&](const FHitResult& result, int idx) {
-			hits.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)), 1.0);
-		}
-	);
-}
-void ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range, const float noise_distance_scale) {
-	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
-	if (positions.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
-	if (intensities.Num() != 0) {				UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
-	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
-	scan<double>(this->GetOwner(), directions, max_range,
-		[&](const FHitResult& result, int idx) {
-			positions.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)));
-			intensities.Add(1.0);
-		}
-	);
-}
-void ULidarSimulationComponent::Scan_2(const TArray<FVector>& directions, TArray<FLinearColor>& positions, TArray<uint8>& generated_colors, const float max_range, const float noise_distance_scale, const FColor intensity_albedo) {
-	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
-	if (positions.Num() != 0) {							UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
-	if (generated_colors.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
-	if (positions.Num() != generated_colors.Num()) {	UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
-	constexpr float intensity = 1.f;
-	scan<double>(this->GetOwner(), directions, max_range,
-		[&](const FHitResult& result, int idx) {
-			positions.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)));
-			generated_colors.Add(intensity * intensity_albedo.R);	// there is probably a more optimal way to add 4 units to the array
-			generated_colors.Add(intensity * intensity_albedo.G);
-			generated_colors.Add(intensity * intensity_albedo.B);
-			generated_colors.Add(intensity * intensity_albedo.A);
+			const float noise = FMath::FRand() * noise_distance_scale * result.Distance;
+			cloud_out.Emplace(result.Location + (directions[idx] * noise));
+			ranges_out.Emplace(result.Distance + noise);
 		}
 	);
 }
@@ -390,56 +511,280 @@ double ULidarSimulationComponent::SavePointsToFile(const TArray<FLinearColor>& p
 }
 
 
+
+template<typename T>
+std::unique_ptr<uint8_t[]> create_mem_snapshot(const T& val) {
+	uint8_t* buff = new uint8_t[sizeof(T)];
+	memcpy(buff, &val, sizeof(T));
+	return std::unique_ptr<uint8_t[]>{buff};
+}
+template<typename T>
+bool compare_mem_snapshot(const T& val, std::unique_ptr<uint8_t[]>& snap) {
+	return !memcmp(&val, snap.get(), sizeof(T));
+}
+
+
 void ULidarSimulationComponent::SegmentPlane(
-	const TArray<FLinearColor>& points, TArray<int32_t>& inlier_indices, FVector4& plane_fit,
-	const FVector3f& target_plane_normal, double fit_distance_threshold, double fit_theta_threshold
+	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<int32>& out,
+	FVector4f& plane_fit, const FVector3f& target_plane_normal,
+	double fit_distance_threshold, double fit_theta_threshold
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_SegmentPoip);
 	using namespace mem_utils;
-	using namespace pcl_api_utils;
 
-	pcl::ModelCoefficients::Ptr fit_coeffs{ new pcl::ModelCoefficients };
-	pcl::PointIndices::Ptr inliers{ new pcl::PointIndices };	// both these fail to be deleted on function scope exit ???
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
-	pcl::SACSegmentation<pcl::PointXYZ> seg{};
+	auto _in = create_mem_snapshot(in);
+	auto _selection = create_mem_snapshot(selection);
+	auto _out = create_mem_snapshot(out);
 
-	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
-	segmodel_perpendicular(
-		seg, fit_distance_threshold, fit_theta_threshold,
-		reinterpret_cast<const Eigen::Vector3f&>(target_plane_normal));
-	filter_single(cloud, seg, *inliers, *fit_coeffs);
-	/*seg.setInputCloud(cloud);
-	seg.segment(*inliers, *fit_coeffs);*/
-	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+	pcl::SACSegmentation<pcl::PointXYZ> filter{};
+	pcl::ModelCoefficients fit_coeffs{};
+	pcl::PointIndices filtered{};
 
-	/*inlier_indices.SetNum(0);
-	inlier_indices.Append(inliers->indices.data(), inliers->indices.size());*/
-	memSwap(inliers->indices, inlier_indices);
-	if (fit_coeffs->values.size() >= 4) {
-		plane_fit = FVector4{
-			fit_coeffs->values[0],
-			fit_coeffs->values[1],
-			fit_coeffs->values[2],
-			fit_coeffs->values[3],
-		};
+	//out.Reset();
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	filter.setInputCloud(cloud);
+	filter.setModelType(pcl::SACMODEL_PERPENDICULAR_PLANE);
+	filter.setMethodType(pcl::SAC_RANSAC);
+	filter.setAxis(reinterpret_cast<const Eigen::Vector3f&>(target_plane_normal));
+	filter.setDistanceThreshold(fit_distance_threshold);
+	filter.setEpsAngle(fit_theta_threshold);
+	filter.setOptimizeCoefficients(false);
+
+	if (!selection.IsEmpty()) {
+		//pcl::IndicesConstPtr ptr = std::make_shared<const pcl::Indices>();
+		//memSwap(const_cast<pcl::Indices&>(*ptr), const_cast<TArray<int32>&>(selection));	// see if we can get away without copying here...? >>
+		//filter.setIndices(ptr);
+		//memSwap(const_cast<pcl::Indices&>(*ptr), const_cast<TArray<int32>&>(selection));
+
+		pcl::IndicesPtr select{ new pcl::Indices };
+		memSwap(*select, const_cast<TArray<int32>&>(selection));
+		filter.setIndices(select);
+
+		/*out.Reserve(selection.Num());
+		memSwap(filtered.indices, out);*/
+
+		filter.segment(filtered, fit_coeffs);
+
+		//memSwap(filtered.indices, out);
+		memSwap(*select, const_cast<TArray<int32>&>(selection));
+	} else {
+		/*out.Reserve(in.Num());
+		memSwap(filtered.indices, out);*/
+
+		filter.segment(filtered, fit_coeffs);
+
+		//memSwap(filtered.indices, out);
 	}
-	/*fit_coeffs->values = std::vector<float>();
-	inliers->indices = std::vector<int32_t>();*/
+	// if we allocate the maximum possible output size beforehand (TArray allocator),
+	// the internal copy never needs to reallocate and we can memSwap safely! --> manually
+	// copy buffers if this ever becomes an issue
+	/*memSwap(filtered.indices, out);
+
+	filter.segment(filtered, fit_coeffs);
+
+	memSwap(filtered.indices, out);*/
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	out.Reset();
+	out.Append(filtered.indices.data(), filtered.indices.size());	// copy buffers for safety
+
+	if (fit_coeffs.values.size() >= 4) {
+		plane_fit = *reinterpret_cast<FVector4f*>(fit_coeffs.values.data());
+	}
+
+	check(compare_mem_snapshot(in, _in));
+	check(compare_mem_snapshot(selection, _selection));
+	//check(compare_mem_snapshot(out, _out));
 }
 
-void ULidarSimulationComponent::RecolorPoints(
-	TArray<uint8_t>& point_colors, const TArray<int32_t>& inliers,
-	const FColor inlier_color/*, const FColor outlier_color*/
+void ULidarSimulationComponent::Voxelize(
+	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<FLinearColor>& out,
+	const FVector3f& leaf_size
 ) {
-	uint32_t* color_bytes = reinterpret_cast<uint32_t*>(point_colors.GetData());
-	/*if (outlier_color.Bits != 0) {
-		const size_t total_colors = point_colors.Num() / 4;
-		for (int i = 0; i < total_colors; i++) {
-			color_bytes[i] = outlier_color.Bits;
+	SCOPE_CYCLE_COUNTER(STAT_Voxelize);
+	using namespace mem_utils;
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
+	pcl::PointCloud<pcl::PointXYZ> filtered{};
+	pcl::VoxelGrid<pcl::PointXYZ> filter{};
+
+	out.Empty();
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	filter.setInputCloud(cloud);
+	filter.setLeafSize(leaf_size.X, leaf_size.Y, leaf_size.Z);
+
+	if (!selection.IsEmpty()) {
+		pcl::IndicesPtr select{ new pcl::Indices };
+		memSwap(*select, const_cast<TArray<int32>&>(selection));
+		filter.setIndices(select);
+		filter.filter(filtered);
+		memSwap(*select, const_cast<TArray<int32>&>(selection));
+	} else {
+		filter.filter(filtered);
+	}
+
+	memSwap(filtered, out);
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+}
+
+void ULidarSimulationComponent::FilterCoords(
+	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<int32>& out,
+	const FVector3f& min, const FVector3f& max
+) {
+	SCOPE_CYCLE_COUNTER(STAT_FilterCoords);
+	using namespace mem_utils;
+
+	auto _in = create_mem_snapshot(in);
+	auto _selection = create_mem_snapshot(selection);
+	auto _out = create_mem_snapshot(out);
+
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
+	pcl::CropBox<pcl::PointXYZ> filter{};
+	pcl::Indices filtered{};
+
+	//out.Reset();
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	filter.setInputCloud(cloud);
+	filter.setMin({ min.X, min.Y, min.Z, 1.f });
+	filter.setMax({ max.X, max.Y, max.Z, 1.f });
+
+	if (!selection.IsEmpty())
+	{
+		pcl::IndicesPtr select{ new pcl::Indices };
+		memSwap(*select, const_cast<TArray<int32>&>(selection));
+		filter.setIndices(select);
+
+		/*out.Reserve(select->size());
+		memSwap(filtered, out);*/
+
+		filter.filter(filtered);
+		
+		//memSwap(filtered, out);
+		memSwap(*select, const_cast<TArray<int32>&>(selection));
+	} else
+	{
+		/*out.Reserve(cloud->points.size());
+		memSwap(filtered, out);*/
+
+		filter.filter(filtered);
+
+		//memSwap(filtered, out);
+	}
+
+	out.Reset();
+	out.Append(filtered.data(), filtered.size());	// copy buffers for safety
+
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	check(compare_mem_snapshot(in, _in));
+	check(compare_mem_snapshot(selection, _selection));
+	//check(compare_mem_snapshot(out, _out));
+}
+
+void ULidarSimulationComponent::FilterRange(
+	const TArray<float>& in, const TArray<int32>& selection, TArray<int32>& out,
+	const float max, const float min
+) {
+	SCOPE_CYCLE_COUNTER(STAT_FilterRange);
+	out.Reset();
+	if (selection.IsEmpty()) {
+		out.Reserve(in.Num());
+		for (int32 i = 0; i < in.Num(); i++) {
+			const float r = in[i];
+			if (r <= max && r >= min) {
+				out.Add(i);
+			}
 		}
-	}*/
-	for (int i = 0; i < inliers.Num(); i++) {
-		color_bytes[inliers[i]] = inlier_color.Bits;
+	} else {
+		out.Reserve(selection.Num());
+		for (size_t i = 0; i < selection.Num(); i++) {
+			const int32 idx = selection[i];
+			const float r = in[idx];
+			if (r <= max && r >= min) {
+				out.Add(idx);
+			}
+
+		}
+	}
+}
+
+void ULidarSimulationComponent::PMFilter(
+	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<int32>& out_ground,
+	const float init_window,
+	const int max_window,
+	const float cell_size,
+	const float init_distance,
+	const float max_distance,
+	const float slope,
+	const bool exp_growth
+) {
+	SCOPE_CYCLE_COUNTER(STAT_PMFilter);
+	using namespace mem_utils;
+
+	auto _in = create_mem_snapshot(in);
+	auto _selection = create_mem_snapshot(selection);
+	auto _out = create_mem_snapshot(out_ground);
+
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
+	pcl::ProgressiveMorphologicalFilter<pcl::PointXYZ> morph{};
+	pcl::Indices filtered{}, select{};
+
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	memSwap(select, const_cast<TArray<int32>&>(selection));
+	progressiveMorphologicalExtract(*cloud, select, filtered, init_window, max_window, cell_size, init_distance, max_distance, slope, exp_growth);
+	memSwap(select, const_cast<TArray<int32>&>(selection));
+
+	//morph.setInputCloud(cloud);
+	//morph.setBase(init_window);
+	//morph.setMaxWindowSize(max_window);
+	//morph.setCellSize(cell_size);
+	//morph.setInitialDistance(init_distance);
+	//morph.setMaxDistance(max_distance);
+	//morph.setSlope(slope);
+	//morph.setExponential(exp_growth);
+
+	//if (!selection.IsEmpty()) {
+	//	pcl::IndicesConstPtr ptr = std::make_shared<const pcl::Indices>();
+	//	memSwap(const_cast<pcl::Indices&>(*ptr), const_cast<TArray<int32>&>(selection));
+	//	morph.setIndices(ptr);
+	//	memSwap(const_cast<pcl::Indices&>(*ptr), const_cast<TArray<int32>&>(selection));
+	//}
+	//morph.extract(filtered);
+
+	out_ground.Reset();
+	out_ground.Append(filtered.data(), filtered.size());	// copy buffers for safety
+
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	check(compare_mem_snapshot(in, _in));
+	check(compare_mem_snapshot(selection, _selection));
+	//check(compare_mem_snapshot(out_ground, _out));
+
+}
+
+
+
+void ULidarSimulationComponent::RecolorPoints(
+	TArray<uint8_t>& colors, const TArray<int32_t>& selection,
+	const FColor color
+) {
+	try {
+		uint32_t* color_bytes = reinterpret_cast<uint32_t*>(colors.GetData());
+		if (!selection.IsEmpty()) {
+			for (size_t i = 0; i < selection.Num(); i++) {
+				color_bytes[selection[i]] = color.Bits;
+			}
+		} else {
+			for (size_t i = 0; i < colors.Num() / 4; i++) {
+				color_bytes[i] = color.Bits;
+			}
+		}
+	} catch (...) {	// incorrectly sized color buffer (out of bounds)
+		return;
 	}
 }
 
@@ -482,6 +827,53 @@ void ULidarSimulationComponent::RingExport(
 		cloud->height = 1;
 		pcl::io::savePCDFileBinaryCompressed(std::string(TCHAR_TO_UTF8(*fname)), *cloud);
 	}
+}
+
+
+
+void ULidarSimulationComponent::BreakUE(TArray<FLinearColor>& pts_buff, TArray<int32>& indices) {
+
+	using namespace mem_utils;
+
+	std::vector<uint32_t> reaper{};
+	uintptr_t* data = reinterpret_cast<uintptr_t*>(&reaper);
+	//uintptr_t alloc = (uintptr_t)malloc(10 * sizeof(uint32_t));
+	uintptr_t alloc = (uintptr_t)FMemory::Malloc(10 * sizeof(uint32_t));
+	data[0] = alloc;
+	data[1] = alloc + 8 * sizeof(uint32_t);
+	data[2] = alloc + 10 * sizeof(uint32_t);
+
+	check(reaper.data() == (uint32_t*)alloc);
+	check(reaper.size() == 8);
+	check(reaper.capacity() == 10);
+
+	memSwap(reaper, indices);
+
+	pcl::IndicesPtr vec = std::make_shared<pcl::Indices>();
+	vec->resize(48);
+	memSwap(*vec, indices);
+	uintptr_t* _vec = reinterpret_cast<uintptr_t*>(vec.get());
+	FMemory::Free((void*)_vec[0]);
+	_vec[0] = 0;
+	_vec[1] = 0;
+	_vec[2] = 0;
+
+	//pcl::PointCloud<pcl::PointXYZ>::Ptr pts = std::make_shared<pcl::PointCloud<pcl::PointXYZ> >();
+	pcl::PointCloud<pcl::PointXYZ>::Ptr pts{ new pcl::PointCloud<pcl::PointXYZ> };
+	pts->points = pcl::PointCloud<pcl::PointXYZ>::VectorType{};		// apparently the pcl::PointCloud internal vector is allocated using malloc() :/ !!???
+	pts->points.resize(785);
+	uintptr_t* _pts = reinterpret_cast<uintptr_t*>(&pts->points);
+	free((void*)_pts[0]);
+	_pts[0] = 0;
+	_pts[1] = 0;
+	_pts[2] = 0;
+
+	/*std::vector<FLinearColor> v2{};
+	v2.resize(100);
+	memSwap(v2, pts_buff);*/
+
+	// The point of this function is to stress test the memswap and the allocators since the shared points gets deleted when it goes out of function scope -- forcing the input buffer to be deleted like a vector
+
 }
 
 

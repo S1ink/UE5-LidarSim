@@ -15,6 +15,45 @@ THIRD_PARTY_INCLUDES_END
 DECLARE_LOG_CATEGORY_EXTERN(LidarSimComponent, Log, All);
 
 
+//UCLASS(Blueprintable, BlueprintType)
+//class LIDARSIM_API UScanResult : public UObject {
+//
+//	GENERATED_BODY()
+//
+//public:
+//	UScanResult();
+//	~UScanResult();
+//
+//	UFUNCTION(DisplayName = "Access internal point cloud", BlueprintCallable, BlueprintPure)
+//	TArray<FLinearColor>& GetCloud();
+//	UFUNCTION(DisplayName = "Access internal range cloud", BlueprintCallable, BlueprintPure)
+//	TArray<float>& GetRanges();
+//	UFUNCTION(DisplayName = "Clear buffers", BlueprintCallable)
+//	void Clear();
+//
+//	TArray<FLinearColor> cloud{};
+//	TArray<float> ranges{};
+//	// TArray<float> intensities{};		// when/if applicable
+//	inline static size_t instance{ 0 };
+//	size_t inst;
+//
+//	inline void resize(size_t nsz) {
+//		this->cloud.SetNum(nsz);
+//		this->ranges.SetNum(nsz);
+//	}
+//	inline void reserve(size_t max) {
+//		this->cloud.Reserve(max);
+//		this->ranges.Reserve(max);
+//	}
+//	inline void clear() {
+//		this->cloud.Reset();
+//		this->ranges.Reset();
+//	}
+//
+//
+//};
+
+
 UCLASS(ClassGroup = Simulation, meta = (BlueprintSpawnableComponent))
 class LIDARSIM_API ULidarSimulationComponent : public USceneComponent {
 
@@ -33,29 +72,13 @@ public:
 	UFUNCTION(BlueprintCallable, DisplayName = "LidarSim Generate Direction Vectors From Spherical")
 	static void GenerateDirections(const TArray<float>& thetas, const TArray<float>& phis, UPARAM(ref) TArray<FVector>& directions);
 
-	/** Initiate a scan centered on the current parent actor instance */
-	UFUNCTION(DisplayName = "LidarSim Initiate Scan (Vector4)", BlueprintCallable)
-	void Scan_0(
-		const TArray<FVector>& directions,
-		UPARAM(ref) TArray<FVector4>& hits,
-		const float max_range = 1e3f,
-		const float noise_distance_scale = 5e-3f);
-
-	/** Initiate a scan centered on the current parent actor instance */
-	UFUNCTION(DisplayName = "LidarSim Initate Scan (Vec3 + Intensity)", BlueprintCallable)
-	void Scan_1(
-		const TArray<FVector>& directions,
-		UPARAM(ref) TArray<FVector>& positions, UPARAM(ref) TArray<float>& intensities,
-		const float max_range = 1e3f,
-		const float noise_distance_scale = 5e-3f);
 
 	/** Initiate a scan centered on the current parent actor instance - optimized output format for the render pipeline */
-	UFUNCTION(DisplayName = "LidarSim Initiate Scan (LinearColor + uint8) >> For PCR", BlueprintCallable)
-	void Scan_2(
-		const TArray<FVector>& directions,
-		UPARAM(ref) TArray<FLinearColor>& positions, UPARAM(ref) TArray<uint8>& generated_colors,
-		const float max_range = 1e3f, const float noise_distance_scale = 5e-3f,
-		const FColor intensity_albedo = FColor::White);
+	UFUNCTION(DisplayName = "LidarSim Scan Environment", BlueprintCallable)
+	void Scan(
+		UPARAM(ref) const TArray<FVector>& directions, /*UPARAM(ref) UScanResult* cloud_out,*/
+		UPARAM(ref) TArray<FLinearColor>& cloud_out, UPARAM(ref) TArray<float>& ranges_out,
+		const float max_range = 1e3f, const float noise_distance_scale = 5e-3f);
 
 	/** Blueprint callable point saving to file */
 	UFUNCTION(BlueprintCallable, DisplayName = "LidarSim Save Points To File")
@@ -65,8 +88,38 @@ public:
 	/** Blueprint callable plane segment function where inlier indices and fit params are exported */
 	UFUNCTION(DisplayName = "LidarSim Segment Plane", BlueprintCallable)
 	static void SegmentPlane(
-		UPARAM(ref) const TArray<FLinearColor>& points, UPARAM(ref) TArray<int32>& inlier_indices, UPARAM(ref) FVector4& plane_fit,
-		UPARAM(ref) const FVector3f& target_plane_normal, const double fit_distance_threshold = 1.0, const double fit_theta_threshold = 0.1);
+		UPARAM(ref) const TArray<FLinearColor>& cloud_in, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<int32>& filtered_inliers,
+		UPARAM(ref) FVector4f& plane_fit, UPARAM(ref) const FVector3f& target_plane_normal,
+		const double fit_distance_threshold = 1.0, const double fit_theta_threshold = 0.1);
+
+	/** Blueprint callable voxelization function. */
+	UFUNCTION(DisplayName = "Voxelize Point Cloud", BlueprintCallable)
+	static void Voxelize(
+		UPARAM(ref) const TArray<FLinearColor>& cloud_in, UPARAM(ref) const TArray<int32>& selection,
+		UPARAM(ref) TArray<FLinearColor>& cloud_out, UPARAM(ref) const FVector3f& leaf_size);
+
+	UFUNCTION(DisplayName = "Cartesian Coord Filter", BlueprintCallable)
+	static void FilterCoords(
+		UPARAM(ref) const TArray<FLinearColor>& cloud_in, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<int32>& filtered,
+		UPARAM(ref) const FVector3f& min, UPARAM(ref) const FVector3f& max);
+
+	UFUNCTION(DisplayName = "Range Filter", BlueprintCallable)
+	static void FilterRange(
+		UPARAM(ref) const TArray<float>& range_cloud, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<int32>& filtered,
+		const float max, const float min = 0.f);
+
+	UFUNCTION(DisplayName = "Progressive Morpholoical Filter", BlueprintCallable)
+	static void PMFilter(
+		UPARAM(ref) const TArray<FLinearColor>& cloud_in, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<int32>& filtered_ground,
+		const float init_window = 1.f,
+		const int max_window = 50,
+		const float cell_size = 5.f,
+		const float init_distance = 1.f,
+		const float max_distance = 12.f,
+		const float slope = 0.5f,
+		const bool exp_growth = false
+	);
+
 
 	/*UFUNCTION(DisplayName = "LidarSim Segment Plane", BlueprintCallable)
 	void SegmentPlane(
@@ -74,10 +127,10 @@ public:
 		double fit_distance_threshold = 1.0, double fit_theta_threshold = 0.1, const FVector3f& target_plane_normal = FVector3f::UpVector);*/
 
 	/** Blueprint callable recolor operation on specified inliers */
-	UFUNCTION(DisplayName = "LidarSim Recolor Inliers/Outliers", BlueprintCallable)
+	UFUNCTION(DisplayName = "LidarSim Recolor Selection", BlueprintCallable)
 	static void RecolorPoints(
-		UPARAM(ref) TArray<uint8>& point_colors, UPARAM(ref) const TArray<int32>& inliers,
-		const FColor inlier_color/*, const FColor outlier_color = FColor::Transparent*/);
+		UPARAM(ref) TArray<uint8>& colors, UPARAM(ref) const TArray<int32>& selection,
+		const FColor color);
 
 
 
@@ -85,6 +138,11 @@ public:
 	void RingExport(
 		const TArray<FVector>& directions, const TArray<int>& ring_ids, const FString& fname,
 		const float max_range = 1e3f, const float noise_distance_scale = 5e-3f);
+
+
+
+	UFUNCTION(BlueprintCallable, DisplayName = "DEATH MODE")
+	static void BreakUE(UPARAM(ref) TArray<FLinearColor>& pts_buff, UPARAM(ref) TArray<int32>& indices);
 
 };
 
