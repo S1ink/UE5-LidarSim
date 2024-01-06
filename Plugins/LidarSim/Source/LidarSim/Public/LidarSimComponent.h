@@ -63,13 +63,18 @@ public:
 	ULidarSimulationComponent(const FObjectInitializer& init) {}
 	~ULidarSimulationComponent() {}
 
+	static inline TArray<int32> const NO_SELECTION{};
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, DisplayName = "No Selection (Use all points)")
+	static const TArray<int32>& GetDefaultSelection();
+
 
 	/** Blueprint callable bulk angle conversion to radians */
-	UFUNCTION(BlueprintCallable, DisplayName = "LidarSim Convert To Radians (Array)")
+	UFUNCTION(DisplayName = "LidarSim Convert To Radians (Array)", BlueprintCallable)
 	static void ConvertToRadians(UPARAM(ref) TArray<float>& thetas, UPARAM(ref) TArray<float>& phis);
 
 	/** Blueprint callable direction vector generation for an array of spherical coordinate components (output is for each in the cartesian product of the inputs) */
-	UFUNCTION(BlueprintCallable, DisplayName = "LidarSim Generate Direction Vectors From Spherical")
+	UFUNCTION(DisplayName = "LidarSim Generate Direction Vectors From Spherical", BlueprintCallable)
 	static void GenerateDirections(const TArray<float>& thetas, const TArray<float>& phis, UPARAM(ref) TArray<FVector>& directions);
 
 
@@ -81,7 +86,7 @@ public:
 		const float max_range = 1e3f, const float noise_distance_scale = 5e-3f);
 
 	/** Blueprint callable point saving to file */
-	UFUNCTION(BlueprintCallable, DisplayName = "LidarSim Save Points To File")
+	UFUNCTION(DisplayName = "LidarSim Save Points To File", BlueprintCallable)
 	static double SavePointsToFile(const TArray<FLinearColor>& points, const FString& fname);
 
 
@@ -111,8 +116,8 @@ public:
 	UFUNCTION(DisplayName = "Progressive Morpholoical Filter", BlueprintCallable)
 	static void PMFilter(
 		UPARAM(ref) const TArray<FLinearColor>& cloud_in, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<int32>& filtered_ground,
-		const float init_window = 1.f,
-		const int max_window = 50,
+		const float window_base = 1.f,
+		const int max_window_size = 50,
 		const float cell_size = 5.f,
 		const float init_distance = 1.f,
 		const float max_distance = 12.f,
@@ -131,6 +136,10 @@ public:
 	static void RecolorPoints(
 		UPARAM(ref) TArray<uint8>& colors, UPARAM(ref) const TArray<int32>& selection,
 		const FColor color);
+
+	UFUNCTION(DisplayName = "Remove Selected Points", BlueprintCallable)
+	static void RemoveSelection(
+		UPARAM(ref) TArray<FLinearColor>& points, UPARAM(ref) const TArray<int32>& selection);
 
 
 

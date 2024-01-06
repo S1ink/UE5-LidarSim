@@ -34,13 +34,13 @@ THIRD_PARTY_INCLUDES_END;
 template<typename PointT>
 void progressiveMorphologicalExtract(
 	const pcl::PointCloud<PointT>& cloud_, const pcl::Indices& selection, pcl::Indices& ground,
-	float base_,
-	int max_window_size_,
-	float cell_size_,
-	float initial_distance_,
-	float max_distance_,
-	float slope_,
-	bool exponential_
+	const float base_,
+	const int max_window_size_,
+	const float cell_size_,
+	const float initial_distance_,
+	const float max_distance_,
+	const float slope_,
+	const bool exponential_
 ) {
 	// Compute the series of window sizes and height thresholds
 	std::vector<float> height_thresholds;
@@ -263,6 +263,36 @@ namespace mem_utils {
 		return memSwap<p_T, a_T>(cloud, ue_arr);
 	}
 
+	template<
+		typename T,
+		typename Alloc_A,
+		typename Alloc_B>
+	static bool memSwap(TArray<T, Alloc_A>& a, TArray<T, Alloc_B>& b) {
+		if constexpr (
+			UE4Array_Private::CanMoveTArrayPointersBetweenArrayTypes<TArray<T, Alloc_A>, TArray<Alloc_B>>() &&
+			(sizeof(TArray<T>) == sizeof(TArray<T, Alloc_A>) && sizeof(TArray<T>) == sizeof(TArray<T, Alloc_B>))
+		) {
+			uint8_t* tmp = new uint8_t[sizeof(TArray<T>)];
+			memcpy(tmp, &a, sizeof(TArray<T>));
+			memcpy(&a, &b, sizeof(TArray<T>));
+			memcpy(&b, tmp, sizeof(TArray<T>));
+			delete[] tmp;
+			return true;
+		}
+		return false;
+	}
+	template<
+		typename T,
+		typename Alloc_A,
+		typename Alloc_B>
+	static bool memSwap(std::vector<T, Alloc_A>& a, std::vector<T, Alloc_B>& b) {
+		if constexpr (std::is_same<Alloc_A, Alloc_B>::value) {
+			std::swap(a, b);
+			return true;
+		}
+		return false;
+	}
+
 }
 
 
@@ -435,6 +465,19 @@ DEFINE_LOG_CATEGORY(LidarSimComponent);
 
 
 
+const TArray<int32>& ULidarSimulationComponent::GetDefaultSelection() {
+	/*if (NO_SELECTION.Max() != (typename decltype(NO_SELECTION)::SizeType)-1) {
+		(reinterpret_cast<uint8_t*>(const_cast<TArray<int32>*>(&NO_SELECTION))
+			+ sizeof(decltype(NO_SELECTION))
+			- sizeof(typename decltype(NO_SELECTION)::SizeType))[0] = -1;
+	}*/
+	return ULidarSimulationComponent::NO_SELECTION;
+}
+static bool checkNoSelect(const TArray<int32>& a) {
+	//return a.Max() == (TArray<int32>::SizeType)(-1);
+	return a.IsEmpty();
+}
+
 void ULidarSimulationComponent::ConvertToRadians(TArray<float>& thetas, TArray<float>& phis) {
 	for (int i = 0; i < thetas.Num(); i++) {
 		thetas[i] = FMath::DegreesToRadians(thetas[i]);
@@ -504,7 +547,7 @@ double ULidarSimulationComponent::SavePointsToFile(const TArray<FLinearColor>& p
 	pcl::PointCloud<pcl::PointXYZ> cloud;
 	memSwap(cloud, const_cast<TArray<FLinearColor>&>(points));	// swap to point cloud
 	if (pcl::io::savePCDFile<pcl::PointXYZ>(std::string(TCHAR_TO_UTF8(*fname)), cloud) != 0) {
-		UE_LOG(LidarSimComponent, Warning, TEXT("Failed to save points to file: %s"), *fname);
+		UE_LOG(LidarSimComponent, Error, TEXT("Failed to save points to file: %s"), *fname);
 	}
 	memSwap(cloud, const_cast<TArray<FLinearColor>&>(points));	// swap back since the point cloud gets deleted
 	return FPlatformTime::Seconds() - a;
@@ -534,7 +577,6 @@ void ULidarSimulationComponent::SegmentPlane(
 
 	auto _in = create_mem_snapshot(in);
 	auto _selection = create_mem_snapshot(selection);
-	auto _out = create_mem_snapshot(out);
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
 	pcl::SACSegmentation<pcl::PointXYZ> filter{};
@@ -552,39 +594,19 @@ void ULidarSimulationComponent::SegmentPlane(
 	filter.setEpsAngle(fit_theta_threshold);
 	filter.setOptimizeCoefficients(false);
 
-	if (!selection.IsEmpty()) {
-		//pcl::IndicesConstPtr ptr = std::make_shared<const pcl::Indices>();
-		//memSwap(const_cast<pcl::Indices&>(*ptr), const_cast<TArray<int32>&>(selection));	// see if we can get away without copying here...? >>
-		//filter.setIndices(ptr);
-		//memSwap(const_cast<pcl::Indices&>(*ptr), const_cast<TArray<int32>&>(selection));
-
+	if (checkNoSelect(selection)) {
+		filter.segment(filtered, fit_coeffs);
+	} else if (!selection.IsEmpty()) {
 		pcl::IndicesPtr select{ new pcl::Indices };
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 		filter.setIndices(select);
-
-		/*out.Reserve(selection.Num());
-		memSwap(filtered.indices, out);*/
-
 		filter.segment(filtered, fit_coeffs);
-
-		//memSwap(filtered.indices, out);
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 	} else {
-		/*out.Reserve(in.Num());
-		memSwap(filtered.indices, out);*/
-
-		filter.segment(filtered, fit_coeffs);
-
-		//memSwap(filtered.indices, out);
+		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+		check(compare_mem_snapshot(in, _in));
+		return;
 	}
-	// if we allocate the maximum possible output size beforehand (TArray allocator),
-	// the internal copy never needs to reallocate and we can memSwap safely! --> manually
-	// copy buffers if this ever becomes an issue
-	/*memSwap(filtered.indices, out);
-
-	filter.segment(filtered, fit_coeffs);
-
-	memSwap(filtered.indices, out);*/
 	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
 
 	out.Reset();
@@ -596,7 +618,6 @@ void ULidarSimulationComponent::SegmentPlane(
 
 	check(compare_mem_snapshot(in, _in));
 	check(compare_mem_snapshot(selection, _selection));
-	//check(compare_mem_snapshot(out, _out));
 }
 
 void ULidarSimulationComponent::Voxelize(
@@ -605,28 +626,41 @@ void ULidarSimulationComponent::Voxelize(
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_Voxelize);
 	using namespace mem_utils;
+
+	auto _in = create_mem_snapshot(in);
+	auto _selection = create_mem_snapshot(selection);
+
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
 	pcl::PointCloud<pcl::PointXYZ> filtered{};
 	pcl::VoxelGrid<pcl::PointXYZ> filter{};
 
-	out.Empty();
 	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
 
 	filter.setInputCloud(cloud);
 	filter.setLeafSize(leaf_size.X, leaf_size.Y, leaf_size.Z);
 
-	if (!selection.IsEmpty()) {
+	if (checkNoSelect(selection)) {
+		filter.filter(filtered);
+	} else if (!selection.IsEmpty()) {
 		pcl::IndicesPtr select{ new pcl::Indices };
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 		filter.setIndices(select);
 		filter.filter(filtered);
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 	} else {
-		filter.filter(filtered);
+		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+		check(compare_mem_snapshot(in, _in));
+		return;
 	}
 
-	memSwap(filtered, out);
+	out.SetNumUninitialized(filtered.size());
+	check(sizeof(decltype(filtered)::PointType) == sizeof(FLinearColor));	// future proofing
+	memcpy(out.GetData(), filtered.points.data(), filtered.size() * sizeof(FLinearColor));
+
 	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	check(compare_mem_snapshot(in, _in));
+	check(compare_mem_snapshot(selection, _selection));
 }
 
 void ULidarSimulationComponent::FilterCoords(
@@ -638,40 +672,29 @@ void ULidarSimulationComponent::FilterCoords(
 
 	auto _in = create_mem_snapshot(in);
 	auto _selection = create_mem_snapshot(selection);
-	auto _out = create_mem_snapshot(out);
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
 	pcl::CropBox<pcl::PointXYZ> filter{};
 	pcl::Indices filtered{};
 
-	//out.Reset();
 	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
 
 	filter.setInputCloud(cloud);
 	filter.setMin({ min.X, min.Y, min.Z, 1.f });
 	filter.setMax({ max.X, max.Y, max.Z, 1.f });
 
-	if (!selection.IsEmpty())
-	{
+	if (checkNoSelect(selection)) {
+		filter.filter(filtered);
+	} else if (!selection.IsEmpty()) {
 		pcl::IndicesPtr select{ new pcl::Indices };
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 		filter.setIndices(select);
-
-		/*out.Reserve(select->size());
-		memSwap(filtered, out);*/
-
 		filter.filter(filtered);
-		
-		//memSwap(filtered, out);
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
-	} else
-	{
-		/*out.Reserve(cloud->points.size());
-		memSwap(filtered, out);*/
-
-		filter.filter(filtered);
-
-		//memSwap(filtered, out);
+	} else {
+		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+		check(compare_mem_snapshot(in, _in));
+		return;
 	}
 
 	out.Reset();
@@ -681,7 +704,6 @@ void ULidarSimulationComponent::FilterCoords(
 
 	check(compare_mem_snapshot(in, _in));
 	check(compare_mem_snapshot(selection, _selection));
-	//check(compare_mem_snapshot(out, _out));
 }
 
 void ULidarSimulationComponent::FilterRange(
@@ -689,8 +711,9 @@ void ULidarSimulationComponent::FilterRange(
 	const float max, const float min
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_FilterRange);
-	out.Reset();
-	if (selection.IsEmpty()) {
+
+	if (checkNoSelect(selection)) {
+		out.Reset();
 		out.Reserve(in.Num());
 		for (int32 i = 0; i < in.Num(); i++) {
 			const float r = in[i];
@@ -698,7 +721,8 @@ void ULidarSimulationComponent::FilterRange(
 				out.Add(i);
 			}
 		}
-	} else {
+	} else if(!selection.IsEmpty()) {
+		out.Reset();
 		out.Reserve(selection.Num());
 		for (size_t i = 0; i < selection.Num(); i++) {
 			const int32 idx = selection[i];
@@ -713,57 +737,117 @@ void ULidarSimulationComponent::FilterRange(
 
 void ULidarSimulationComponent::PMFilter(
 	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<int32>& out_ground,
-	const float init_window,
-	const int max_window,
-	const float cell_size,
-	const float init_distance,
-	const float max_distance,
-	const float slope,
-	const bool exp_growth
+	const float base_,
+	const int max_window_size_,
+	const float cell_size_,
+	const float initial_distance_,
+	const float max_distance_,
+	const float slope_,
+	const bool exponential_
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_PMFilter);
 	using namespace mem_utils;
 
 	auto _in = create_mem_snapshot(in);
 	auto _selection = create_mem_snapshot(selection);
-	auto _out = create_mem_snapshot(out_ground);
+	// copied from pcl::ProgressiveMorphologicalFilter<PointT>::extract() and retrofitted for the internal use of TArray<>
+	{
+		//// Ground indices are initially limited to those points in the input cloud we wish to process
+		//if (checkNoSelect(selection)) {
+		//	out_ground.SetNum(in.Num());
+		//	for (size_t i = 0; i < in.Num(); i++) {
+		//		out_ground[i] = i;
+		//	}
+		//} else if (!selection.IsEmpty()) {
+		//	out_ground = selection;
+		//} else {
+		//	return;
+		//}
+
+		//// Compute the series of window sizes and height thresholds
+		//std::vector<float> height_thresholds;
+		//std::vector<float> window_sizes;
+		//int iteration = 0;
+		//float window_size = 0.0f;
+		//float height_threshold = 0.0f;
+
+		//while (window_size < max_window_size_)
+		//{
+		//	// Determine the initial window size.
+		//	if (exponential_)
+		//		window_size = cell_size_ * (2.0f * std::pow(base_, iteration) + 1.0f);
+		//	else
+		//		window_size = cell_size_ * (2.0f * (iteration + 1) * base_ + 1.0f);
+
+		//	// Calculate the height threshold to be used in the next iteration.
+		//	if (iteration == 0)
+		//		height_threshold = initial_distance_;
+		//	else
+		//		height_threshold = slope_ * (window_size - window_sizes[iteration - 1]) * cell_size_ + initial_distance_;
+
+		//	// Enforce max distance on height threshold
+		//	if (height_threshold > max_distance_)
+		//		height_threshold = max_distance_;
+
+		//	window_sizes.push_back(window_size);
+		//	height_thresholds.push_back(height_threshold);
+
+		//	iteration++;
+		//}
+
+		//// Progressively filter ground returns using morphological open
+		//for (std::size_t i = 0; i < window_sizes.size(); ++i)
+		//{
+		//	using namespace mem_utils;
+
+		//	pcl::Indices swp_ground{};
+		//	pcl::PointCloud<pcl::PointXYZ>::Ptr
+		//		swp_cloud{ new pcl::PointCloud<pcl::PointXYZ> },
+		//		tmp_cloud{ new pcl::PointCloud<pcl::PointXYZ> },
+		//		cloud_f{ new pcl::PointCloud<pcl::PointXYZ> };
+
+		//	memSwap(*swp_cloud, const_cast<TArray<FLinearColor>&>(in));
+		//	memSwap(swp_ground, const_cast<TArray<int32>&>(out_ground));
+
+		//	// Limit filtering to those points currently considered ground returns
+		//	pcl::copyPointCloud<pcl::PointXYZ>(*swp_cloud, swp_ground, *tmp_cloud);
+
+		//	// Create new cloud to hold the filtered results. Apply the morphological opening operation at the current window size.
+		//	pcl::applyMorphologicalOperator<pcl::PointXYZ>(tmp_cloud, window_sizes[i], pcl::MorphologicalOperators::MORPH_OPEN, *cloud_f);
+
+		//	memSwap(*swp_cloud, const_cast<TArray<FLinearColor>&>(in));
+		//	memSwap(swp_ground, const_cast<TArray<int32>&>(out_ground));
+
+		//	// Find indices of the points whose difference between the source and
+		//	// filtered point clouds is less than the current height threshold.
+		//	TArray<int32> tmp_indices{};
+		//	for (std::size_t p_idx = 0; p_idx < out_ground.Num(); ++p_idx)
+		//	{
+		//		float diff = (*tmp_cloud)[p_idx].z - (*cloud_f)[p_idx].z;
+		//		if (diff < height_thresholds[i])
+		//			tmp_indices.Push(out_ground[p_idx]);
+		//	}
+
+		//	// Ground is now limited to pt_indices
+		//	memSwap(out_ground, tmp_indices);
+		//}
+	}
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
-	pcl::ProgressiveMorphologicalFilter<pcl::PointXYZ> morph{};
-	pcl::Indices filtered{}, select{};
+	pcl::IndicesPtr select{ new pcl::Indices };
+	pcl::Indices filtered{};
 
+	memSwap(*select, const_cast<TArray<int32>&>(selection));
 	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
-
-	memSwap(select, const_cast<TArray<int32>&>(selection));
-	progressiveMorphologicalExtract(*cloud, select, filtered, init_window, max_window, cell_size, init_distance, max_distance, slope, exp_growth);
-	memSwap(select, const_cast<TArray<int32>&>(selection));
-
-	//morph.setInputCloud(cloud);
-	//morph.setBase(init_window);
-	//morph.setMaxWindowSize(max_window);
-	//morph.setCellSize(cell_size);
-	//morph.setInitialDistance(init_distance);
-	//morph.setMaxDistance(max_distance);
-	//morph.setSlope(slope);
-	//morph.setExponential(exp_growth);
-
-	//if (!selection.IsEmpty()) {
-	//	pcl::IndicesConstPtr ptr = std::make_shared<const pcl::Indices>();
-	//	memSwap(const_cast<pcl::Indices&>(*ptr), const_cast<TArray<int32>&>(selection));
-	//	morph.setIndices(ptr);
-	//	memSwap(const_cast<pcl::Indices&>(*ptr), const_cast<TArray<int32>&>(selection));
-	//}
-	//morph.extract(filtered);
+	progressiveMorphologicalExtract(*cloud, *select, filtered, base_, max_window_size_, cell_size_, initial_distance_, max_distance_, slope_, exponential_);
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+	memSwap(*select, const_cast<TArray<int32>&>(selection));
 
 	out_ground.Reset();
 	out_ground.Append(filtered.data(), filtered.size());	// copy buffers for safety
 
-	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
-
 	check(compare_mem_snapshot(in, _in));
 	check(compare_mem_snapshot(selection, _selection));
-	//check(compare_mem_snapshot(out_ground, _out));
-
 }
 
 
@@ -787,6 +871,19 @@ void ULidarSimulationComponent::RecolorPoints(
 		return;
 	}
 }
+
+void ULidarSimulationComponent::RemoveSelection(TArray<FLinearColor>& points, const TArray<int32>& selection) {
+	size_t last = points.Num() - 1;
+	for (size_t i = 0; i < selection.Num(); i++) {
+		memcpy(&points[selection[i]], &points[last], sizeof(FLinearColor));	// overwrite each location to be removed
+		last--;
+	}
+	points.SetNum(last + 1, false);
+}
+
+
+
+
 
 struct EIGEN_ALIGN16 PointXYZIR {
 	PCL_ADD_POINT4D;
