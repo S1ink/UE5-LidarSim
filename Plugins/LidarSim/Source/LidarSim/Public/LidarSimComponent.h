@@ -141,6 +141,14 @@ public:
 	static void RemoveSelection(
 		UPARAM(ref) TArray<FLinearColor>& points, UPARAM(ref) const TArray<int32>& selection);
 
+	UFUNCTION(DisplayName = "Negate Selection from base", BlueprintCallable)
+	static void NegateSelection(
+		UPARAM(ref) const TArray<int32>& base, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<int32>& negate);
+
+	UFUNCTION(DisplayName = "Negate Selection from range", BlueprintCallable)
+	static void NegateSelection2(
+		const int32 base, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<int32>& negate);
+
 
 
 	UFUNCTION(BlueprintCallable, DisplayName = "Sample and export with ring IDs")

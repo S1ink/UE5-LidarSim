@@ -181,7 +181,9 @@ void UGPUPointCloudRendererComponent::CreateStreamingBaseMesh(int32 pointCount)
 	if (pointCount == 0 || !mPointCloudCore)
 		return;
 
-	mBaseMesh = NewObject<UPointCloudMeshComponent>(this, FName("PointCloud Mesh"));
+	if (!mBaseMesh) {
+		mBaseMesh = NewObject<UPointCloudMeshComponent>(this, FName("PointCloud Mesh"));
+	}
 
 	// Create base mesh
 	TArray<FCustomMeshTriangle> triangles;

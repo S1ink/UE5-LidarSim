@@ -31,6 +31,19 @@ THIRD_PARTY_INCLUDES_END;
 //#include <vcruntime_new.h>
 //template void pcl::ProgressiveMorphologicalFilter<pcl::PointXYZ>::extract(pcl::Indices& g);
 
+//template<typename PointT>
+//void applyMorphologicalOpenClose(
+//	const typename pcl::PointCloud<PointT>::ConstPtr& cloud_in,
+//	pcl::PointCloud<PointT>& cloud_out,
+//	float resolution
+//) {
+//	if (cloud_in->empty()) {
+//		return;
+//	}
+//
+//
+//}
+
 template<typename PointT>
 void progressiveMorphologicalExtract(
 	const pcl::PointCloud<PointT>& cloud_, const pcl::Indices& selection, pcl::Indices& ground,
@@ -93,16 +106,20 @@ void progressiveMorphologicalExtract(
 
 		// Create new cloud to hold the filtered results. Apply the morphological
 		// opening operation at the current window size.
-		typename pcl::PointCloud<PointT>::Ptr cloud_f(new pcl::PointCloud<PointT>);
-		pcl::applyMorphologicalOperator<PointT>(cloud, window_sizes[i], pcl::MorphologicalOperators::MORPH_OPEN, *cloud_f);
+		typename pcl::PointCloud<PointT>::Ptr
+			cloud_O(new pcl::PointCloud<PointT>),
+			cloud_C(new pcl::PointCloud<PointT>);
+		pcl::applyMorphologicalOperator<PointT>(cloud, window_sizes[i], pcl::MorphologicalOperators::MORPH_OPEN, *cloud_O);
+		pcl::applyMorphologicalOperator<PointT>(cloud, window_sizes[i], pcl::MorphologicalOperators::MORPH_CLOSE, *cloud_C);
 
 		// Find indices of the points whose difference between the source and
 		// filtered point clouds is less than the current height threshold.
 		pcl::Indices pt_indices;
 		for (std::size_t p_idx = 0; p_idx < ground.size(); ++p_idx)
 		{
-			float diff = (*cloud)[p_idx].z - (*cloud_f)[p_idx].z;
-			if (diff < height_thresholds[i])
+			float diff_O = (*cloud)[p_idx].z - (*cloud_O)[p_idx].z;
+			float diff_C = (*cloud_C)[p_idx].z - (*cloud)[p_idx].z;
+			if (diff_O < height_thresholds[i] && diff_C < height_thresholds[i])
 				pt_indices.push_back(ground[p_idx]);
 		}
 
@@ -879,6 +896,50 @@ void ULidarSimulationComponent::RemoveSelection(TArray<FLinearColor>& points, co
 		last--;
 	}
 	points.SetNum(last + 1, false);
+}
+
+void ULidarSimulationComponent::NegateSelection(const TArray<int32>& base, const TArray<int32>& selection, TArray<int32>& negate) {
+	if (base.Num() <= selection.Num()) {
+		return;
+	}
+	negate.SetNum(base.Num() - selection.Num());
+	size_t
+		_base = 0,
+		_select = 0,
+		_negate = 0;
+	for (; _base < base.Num() && _negate < negate.Num(); _base++) {
+		if (_select < selection.Num() && base[_base] == selection[_select]) {
+			_select++;
+		} else /*if(base[_base] < selection[_select])*/ {
+			negate[_negate] = base[_base];
+			_negate++;
+		}
+		//} else {
+		//	return;		// illegal jump
+		//}
+	}
+}
+
+void ULidarSimulationComponent::NegateSelection2(const int32 base, const TArray<int32>& selection, TArray<int32>& negate) {
+	if (base <= selection.Num()) {
+		return;
+	}
+	negate.SetNum(base - selection.Num());
+	size_t
+		_base = 0,
+		_select = 0,
+		_negate = 0;
+	for (; _base < base && _negate < negate.Num(); _base++) {
+		if (_select < selection.Num() && _base == selection[_select]) {
+			_select++;
+		} else /*if (_base < selection[_select])*/ {
+			negate[_negate] = _base;
+			_negate++;
+		}
+		//else {
+		//	return;		// illegal jump
+		//}
+	}
 }
 
 
