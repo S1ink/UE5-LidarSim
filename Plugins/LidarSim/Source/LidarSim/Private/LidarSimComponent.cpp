@@ -459,6 +459,7 @@ DECLARE_CYCLE_STAT(TEXT("Filter Coords"), STAT_FilterCoords, STATGROUP_LidarSim)
 DECLARE_CYCLE_STAT(TEXT("Filter Range"), STAT_FilterRange, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Progressive Morphological Filter"), STAT_PMFilter, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Weight Map Insert"), STAT_WeightMapInsert, STATGROUP_LidarSim);
+DECLARE_CYCLE_STAT(TEXT("Weight Map Export"), STAT_WeightMapExport, STATGROUP_LidarSim);
 
 DEFINE_LOG_CATEGORY(LidarSimComponent);
 
@@ -1189,6 +1190,90 @@ void UTemporalMap::AddPoints(const TArray<FLinearColor>& points, const TArray<in
 	memSwap(select, const_cast<TArray<int32>&>(selection));
 }
 
+void UTemporalMap::CloudExport(TArray<FLinearColor>& points, TArray<uint8>& colors, const float z) {
+	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
+	int _area = this->map.map_size.prod();
+	points.SetNum(_area);
+	colors.SetNum(_area * 4);
+
+	Eigen::Vector2f _off = this->map.map_off + Eigen::Vector2f{ this->map.resolution / 2.f, this->map.resolution / 2.f };
+	for (size_t i = 0; i < _area; i++) {
+		reinterpret_cast<Eigen::Vector2f&>(points[i]) =
+			WeightMapInternal<>::gridLoc(i, this->map.map_size).cast<float>() * this->map.resolution + _off;
+		points[i].B = z;
+		
+		float val = (float)this->map.map[i] / this->map.max;
+		colors[i * 4 + 0] = val * 255;
+		colors[i * 4 + 1] = 0;
+		colors[i * 4 + 2] = 0;
+		colors[i * 4 + 3] = 255;
+	}
+}
+
 const FVector2f UTemporalMap::GetMapSize() {
 	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->map.mapSize()) };
 }
+const int64 UTemporalMap::GetMaxWeight() {
+	return static_cast<int64_t>(this->map.getMax());
+}
+
+
+
+
+
+//THIRD_PARTY_INCLUDES_START
+//#include <cscore_cpp.h>
+//#include <cscore_cv.h>
+//THIRD_PARTY_INCLUDES_END
+//
+//class StreamingInstance {
+//public:
+//	~StreamingInstance() {
+//		int status;
+//		cs::ReleaseSource(frame_source, &status);
+//		cs::ReleaseSink(server, &status);
+//		cs::Shutdown();
+//	}
+//
+//	static StreamingInstance& get() {
+//		static StreamingInstance inst;
+//		return inst;
+//	}
+//	void putFrame(const cv::Mat& f) {
+//		int status;
+//		cs::VideoMode m = cs::GetSourceVideoMode(frame_source, &status);
+//		//if (*reinterpret_cast<cv::Size2i*>(&m.width) != f.size()) {
+//		//	*reinterpret_cast<cv::Size2i*>(&m.width) = f.size();
+//		//	cs::SetSourceVideoMode(frame_source, m, &status);
+//		//	//cs::SetSinkSource(server, frame_source, &status);
+//		//}
+//		/*if (cs::GetSinkSource(server, &status) != frame_source) {
+//			cs::SetSinkSource(server, frame_source, &status);
+//		}*/
+//		*reinterpret_cast<cv::Size2i*>(&m.width) = f.size();
+//		cs::SetSourceVideoMode(frame_source, m, &status);
+//		cs::SetSinkSource(server, frame_source, &status);
+//		cs::PutSourceFrame(frame_source, const_cast<cv::Mat&>(f), &status);
+//	}
+//
+//
+//protected:
+//	StreamingInstance() {
+//		int status;
+//		frame_source = cs::CreateCvSource("frames", cs::VideoMode{ cs::VideoMode::kMJPEG, 10, 10, 10 }, &status);
+//		server = cs::CreateMjpegServer("output", "", 1181, &status);
+//		UE_LOG(LidarSimComponent, Log, TEXT("Initialized StreamingInstance -- Source handle: %d, Server handle: %d"), frame_source, server);
+//	}
+//
+//	CS_Source frame_source{};
+//	CS_Sink server{};
+//
+//	
+//};
+//
+//void UTemporalMap::StreamMap() {
+//	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
+//	cv::Mat m;
+//	this->map.toMat(m);
+//	StreamingInstance::get().putFrame(m);
+//}

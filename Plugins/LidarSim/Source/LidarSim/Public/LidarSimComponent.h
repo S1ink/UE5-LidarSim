@@ -4,13 +4,25 @@
 #include <Components/ActorComponent.h>
 
 #include <fstream>
+
+#ifdef check
+#pragma push_macro("check")
+#undef check
+#define REMOVED_UE_CHECK
+#endif
 THIRD_PARTY_INCLUDES_START
 #include <pcl/io/tar.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/common/common.h>
+#include <opencv2/core.hpp>
 THIRD_PARTY_INCLUDES_END
+#ifdef REMOVED_UE_CHECK
+#undef REMOVED_UE_CHECK
+#pragma pop_macro("check")
+#endif
+
 
 #include "LidarSimComponent.generated.h"
 
@@ -222,6 +234,7 @@ protected:
 
 template<typename weight_T = uint64_t>
 class WeightMapInternal {
+	friend class UTemporalMap;
 public:
 	WeightMapInternal() {}
 	~WeightMapInternal() {
@@ -240,6 +253,9 @@ public:
 	const Eigen::Vector2i& mapSize() {
 		return this->map_size;
 	}
+	const weight_T getMax() {
+		return this->max;
+	}
 
 	template<typename PointT>
 	void insertPoints(const pcl::PointCloud<PointT>& cloud, const pcl::Indices& selection) {
@@ -247,41 +263,41 @@ public:
 		Eigen::Vector4f _min, _max;
 		if (selection.empty()) {
 			pcl::getMinMax3D<PointT>(cloud, _min, _max);
-			this->resizeToBounds(_min, _max);
-
-			for (const PointT& pt : cloud.points) {
-				weight_T& w = map[
-					gridIdx(
-						gridAlign(pt.x, pt.y, map_off, resolution),
-						map_size)
-				];
-				w++;
-				if (w > max) {
-					max = w;
+			if (this->resizeToBounds(_min, _max)) {
+				for (const PointT& pt : cloud.points) {
+					weight_T& w = map[
+						gridIdx(
+							gridAlign(pt.x, pt.y, map_off, resolution),
+							map_size)
+					];
+					w++;
+					if (w > max) {
+						max = w;
+					}
 				}
 			}
 		}
 		else {
 			pcl::getMinMax3D<PointT>(cloud, selection, _min, _max);
-			this->resizeToBounds(_min, _max);
-
-			for (const pcl::index_t idx : selection) {
-				const PointT& pt = cloud.points[idx];
-				weight_T& w = map[
-					gridIdx(
-						gridAlign(pt.x, pt.y, map_off, resolution),
-						map_size)
-				];
-				w++;
-				if (w > max) {
-					max = w;
+			if (this->resizeToBounds(_min, _max)) {
+				for (const pcl::index_t idx : selection) {
+					const PointT& pt = cloud.points[idx];
+					weight_T& w = map[
+						gridIdx(
+							gridAlign(pt.x, pt.y, map_off, resolution),
+							map_size)
+					];
+					w++;
+					if (w > max) {
+						max = w;
+					}
 				}
 			}
 		}
 
 	}
 
-	void resizeToBounds(const Eigen::Vector4f& min_, const Eigen::Vector4f& max_) {
+	bool resizeToBounds(const Eigen::Vector4f& min_, const Eigen::Vector4f& max_) {
 
 		const Eigen::Vector2i
 			_min = gridAlign(min_, map_off, resolution),	// grid cell locations containing min and max, aligned with current offsets
@@ -294,7 +310,10 @@ public:
 				_high = _max.cwiseMax(map_size),
 				_size = _high - _low;				// new map size
 
-			weight_T* _map = new weight_T[_size[0] * _size[1]];
+			const size_t area = (size_t)_size[0] * _size[1];
+			if (area > 1e10) return false;
+
+			weight_T* _map = new weight_T[area];
 			const Eigen::Vector2i _diff = _zero - _low;	// by how many grid cells did the origin shift
 			if (map) {
 				for (int r = 0; r < map_size[0]; r++) {		// for each row in existing...
@@ -310,7 +329,33 @@ public:
 			map_size = _size;
 			map_off -= (_diff.cast<float>() * resolution);
 		}
+		return true;
 
+	}
+
+	void toMat(cv::Mat& out) {
+		cv::Size2i _size = *reinterpret_cast<cv::Size2i*>(&this->map_size);
+		if (out.size() != _size) {
+			out = cv::Mat::zeros(_size, CV_8UC3);
+		}
+		const size_t len = _size.area();
+		for (size_t i = 0; i < len; i++) {
+			float val;
+			if constexpr (std::is_integral<weight_T>::value) {
+				val = static_cast<float>(map[i]) / static_cast<float>(max);
+			} else {
+				val = static_cast<float>(map[i] / max);
+			}
+			int x = i / map_size[1];
+			int y = i % map_size[1];
+			int idx = (map_size[1] - y) * map_size[0] + x;
+			if (idx >= len) continue;
+			//val = std::pow(val, 0.1);
+			out.data[idx * 3 + 2] = val * 255;
+			//out.data[idx * 3 + 1] = (1.f - val) * 255;
+			//out.data[i * 3 + 1] = 0;
+			//out.data[i * 3 + 2] = 0;
+		}
 	}
 
 protected:
@@ -327,7 +372,13 @@ protected:
 
 	/** Get a raw buffer idx from a 2d index and buffer size (Row~X, Col~Y order) */
 	static std::size_t gridIdx(const Eigen::Vector2i& loc, const Eigen::Vector2i& size) {
-		return loc[0] * size[1] + loc[1];	// rows along x-axis, cols along y-axis, thus (x, y) --> x * #cols + y
+		return (size_t)loc[0] * size[1] + loc[1];	// rows along x-axis, cols along y-axis, thus (x, y) --> x * #cols + y
+	}
+	static Eigen::Vector2i gridLoc(std::size_t idx, const Eigen::Vector2i& size) {
+		return Eigen::Vector2i{
+			idx / size[1],
+			idx % size[1]
+		};
 	}
 
 protected:
@@ -358,9 +409,19 @@ public:
 	UFUNCTION(DisplayName = "Add points to weight map", BlueprintCallable)
 	void AddPoints(UPARAM(ref) const TArray<FLinearColor>& points, UPARAM(ref) const TArray<int32>& selection);
 
+	UFUNCTION(DisplayName = "Export to cloud", BlueprintCallable)
+	void CloudExport(
+		UPARAM(ref) TArray<FLinearColor>& points, UPARAM(ref) TArray<uint8>& colors, const float z = 0.f);
+
 
 	UFUNCTION(DisplayName = "Get weight map size", BlueprintCallable, BlueprintPure)
 	const FVector2f GetMapSize();
+
+	UFUNCTION(DisplayName = "Get maximum weight", BlueprintCallable, BlueprintPure)
+	const int64 GetMaxWeight();
+
+	/*UFUNCTION(DisplayName = "Export map to stream", BlueprintCallable)
+	void StreamMap();*/
 
 
 protected:
