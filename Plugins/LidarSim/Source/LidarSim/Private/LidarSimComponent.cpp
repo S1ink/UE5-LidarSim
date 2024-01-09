@@ -458,6 +458,7 @@ DECLARE_CYCLE_STAT(TEXT("Voxelize"), STAT_Voxelize, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Filter Coords"), STAT_FilterCoords, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Filter Range"), STAT_FilterRange, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Progressive Morphological Filter"), STAT_PMFilter, STATGROUP_LidarSim);
+DECLARE_CYCLE_STAT(TEXT("Weight Map Insert"), STAT_WeightMapInsert, STATGROUP_LidarSim);
 
 DEFINE_LOG_CATEGORY(LidarSimComponent);
 
@@ -1159,4 +1160,35 @@ void UPCDWriter::addCloud(const pcl::PCLPointCloud2& cloud, const Eigen::Vector4
 		this->fio.write(reinterpret_cast<char*>(this->head_buff),
 			(this->head_buff->uname - this->head_buff->file_name));		// only re-write the byte range that we have modified
 	}
+}
+
+
+
+
+
+
+
+
+void UTemporalMap::Reset(float resolution, const FVector2f offset) {
+	this->map.reset(resolution, *reinterpret_cast<const Eigen::Vector2f*>(&offset));
+}
+
+void UTemporalMap::AddPoints(const TArray<FLinearColor>& points, const TArray<int32>& selection) {
+	SCOPE_CYCLE_COUNTER(STAT_WeightMapInsert);
+	using namespace mem_utils;
+
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
+	pcl::Indices select{};
+
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
+	memSwap(select, const_cast<TArray<int32>&>(selection));
+
+	this->map.insertPoints<pcl::PointXYZ>(*cloud, select);
+
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
+	memSwap(select, const_cast<TArray<int32>&>(selection));
+}
+
+const FVector2f UTemporalMap::GetMapSize() {
+	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->map.mapSize()) };
 }

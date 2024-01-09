@@ -7,6 +7,9 @@
 THIRD_PARTY_INCLUDES_START
 #include <pcl/io/tar.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+#include <pcl/common/common.h>
 THIRD_PARTY_INCLUDES_END
 
 #include "LidarSimComponent.generated.h"
@@ -212,17 +215,156 @@ protected:
 
 };
 
-//UCLASS(ClassGroup = Simulation, meta = (BlueprintSpawnableComponent))
-//class LIDARSIM_API UPCFilterBuffer {
-//
-//	GENERATED_BODY();
-//
-//public:
-//	UPCFilterBuffer(const FObjectInitializer& init) {}
-//	~UPCFilterBuffer() {}
-//
-//
-//private:
-//
-//
-//};
+
+
+
+
+
+template<typename weight_T = uint64_t>
+class WeightMapInternal {
+public:
+	WeightMapInternal() {}
+	~WeightMapInternal() {
+		if (map) delete[] map;
+	}
+
+
+	void reset(float res = 1.f, const Eigen::Vector2f off = Eigen::Vector2f::Zero()) {
+		if (map) delete[] map;
+		map_size = Eigen::Vector2i::Zero();
+		max = (weight_T)0;
+
+		resolution = res <= 0.f ? 1.f : res;
+		map_off = off;
+	}
+	const Eigen::Vector2i& mapSize() {
+		return this->map_size;
+	}
+
+	template<typename PointT>
+	void insertPoints(const pcl::PointCloud<PointT>& cloud, const pcl::Indices& selection) {
+
+		Eigen::Vector4f _min, _max;
+		if (selection.empty()) {
+			pcl::getMinMax3D<PointT>(cloud, _min, _max);
+			this->resizeToBounds(_min, _max);
+
+			for (const PointT& pt : cloud.points) {
+				weight_T& w = map[
+					gridIdx(
+						gridAlign(pt.x, pt.y, map_off, resolution),
+						map_size)
+				];
+				w++;
+				if (w > max) {
+					max = w;
+				}
+			}
+		}
+		else {
+			pcl::getMinMax3D<PointT>(cloud, selection, _min, _max);
+			this->resizeToBounds(_min, _max);
+
+			for (const pcl::index_t idx : selection) {
+				const PointT& pt = cloud.points[idx];
+				weight_T& w = map[
+					gridIdx(
+						gridAlign(pt.x, pt.y, map_off, resolution),
+						map_size)
+				];
+				w++;
+				if (w > max) {
+					max = w;
+				}
+			}
+		}
+
+	}
+
+	void resizeToBounds(const Eigen::Vector4f& min_, const Eigen::Vector4f& max_) {
+
+		const Eigen::Vector2i
+			_min = gridAlign(min_, map_off, resolution),	// grid cell locations containing min and max, aligned with current offsets
+			_max = gridAlign(max_, map_off, resolution),
+			_zero = Eigen::Vector2i::Zero();
+
+		if (_min.cwiseLess(_zero).any() || _max.cwiseGreater(map_size).any()) {
+			const Eigen::Vector2i
+				_low = _min.cwiseMin(_zero),		// new high and low bounds for the map
+				_high = _max.cwiseMax(map_size),
+				_size = _high - _low;				// new map size
+
+			weight_T* _map = new weight_T[_size[0] * _size[1]];
+			const Eigen::Vector2i _diff = _zero - _low;	// by how many grid cells did the origin shift
+			if (map) {
+				for (int r = 0; r < map_size[0]; r++) {		// for each row in existing...
+					memcpy(									// remap to new buffer
+						_map + ((r + _diff[0]) * _size[1] + _diff[1]),	// (row + offset rows) * new row size + offset cols
+						map + (r * map_size[1]),
+						map_size[1] * sizeof(weight_T)
+					);
+				}
+				delete[] map;
+			}
+			map = _map;
+			map_size = _size;
+			map_off -= (_diff.cast<float>() * resolution);
+		}
+
+	}
+
+protected:
+	/** Align a point to a box grid of the given resolution and offset origin. Result may be negative if lower than current offset. */
+	static Eigen::Vector2i gridAlign(float x, float y, const Eigen::Vector2f& off, float res) {
+		return Eigen::Vector2i{
+			std::floorf((x - off[0]) / res),	// always floor since grid cells are indexed by their "bottom left" corner's raw position
+			std::floorf((y - off[1]) / res)
+		};
+	}
+	static Eigen::Vector2i gridAlign(const Eigen::Vector4f& pt, const Eigen::Vector2f& off, float res) {
+		return gridAlign(pt[0], pt[1], off, res);
+	}
+
+	/** Get a raw buffer idx from a 2d index and buffer size (Row~X, Col~Y order) */
+	static std::size_t gridIdx(const Eigen::Vector2i& loc, const Eigen::Vector2i& size) {
+		return loc[0] * size[1] + loc[1];	// rows along x-axis, cols along y-axis, thus (x, y) --> x * #cols + y
+	}
+
+protected:
+	float resolution{ 1.f };
+	Eigen::Vector2f map_off{};
+
+	weight_T* map{ nullptr };
+	Eigen::Vector2i map_size{};
+
+	weight_T max{ (weight_T)0 };
+
+};
+
+
+UCLASS(Blueprintable, BlueprintType)
+class LIDARSIM_API UTemporalMap : public UObject {
+
+	GENERATED_BODY()
+
+public:
+	UTemporalMap() {}
+	~UTemporalMap() {}
+
+
+	UFUNCTION(DisplayName = "Reset weight map", BlueprintCallable)
+	void Reset(float resolution, const FVector2f offset);
+
+	UFUNCTION(DisplayName = "Add points to weight map", BlueprintCallable)
+	void AddPoints(UPARAM(ref) const TArray<FLinearColor>& points, UPARAM(ref) const TArray<int32>& selection);
+
+
+	UFUNCTION(DisplayName = "Get weight map size", BlueprintCallable, BlueprintPure)
+	const FVector2f GetMapSize();
+
+
+protected:
+	WeightMapInternal<uint64_t> map{};
+
+
+};
