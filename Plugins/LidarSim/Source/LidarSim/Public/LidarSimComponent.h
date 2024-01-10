@@ -232,7 +232,7 @@ protected:
 
 
 
-template<typename weight_T = uint64_t>
+template<typename weight_T = float>
 class WeightMapInternal {
 	friend class UTemporalMap;
 public:
@@ -270,7 +270,7 @@ public:
 							gridAlign(pt.x, pt.y, map_off, resolution),
 							map_size)
 					];
-					w++;
+					w += (weight_T)1;
 					if (w > max) {
 						max = w;
 					}
@@ -287,7 +287,7 @@ public:
 							gridAlign(pt.x, pt.y, map_off, resolution),
 							map_size)
 					];
-					w++;
+					w += (weight_T)1;
 					if (w > max) {
 						max = w;
 					}
@@ -314,6 +314,8 @@ public:
 			if (area > 1e10) return false;
 
 			weight_T* _map = new weight_T[area];
+			memset(_map, 0x00, area * sizeof(weight_T));	// :O
+
 			const Eigen::Vector2i _diff = _zero - _low;	// by how many grid cells did the origin shift
 			if (map) {
 				for (int r = 0; r < map_size[0]; r++) {		// for each row in existing...
@@ -413,19 +415,22 @@ public:
 	void CloudExport(
 		UPARAM(ref) TArray<FLinearColor>& points, UPARAM(ref) TArray<uint8>& colors, const float z = 0.f);
 
+	UFUNCTION(DisplayName = "Export to Texture", BlueprintCallable)
+	UTexture2D* TextureExport();
+
 
 	UFUNCTION(DisplayName = "Get weight map size", BlueprintCallable, BlueprintPure)
 	const FVector2f GetMapSize();
 
 	UFUNCTION(DisplayName = "Get maximum weight", BlueprintCallable, BlueprintPure)
-	const int64 GetMaxWeight();
+	const float GetMaxWeight();
 
 	/*UFUNCTION(DisplayName = "Export map to stream", BlueprintCallable)
 	void StreamMap();*/
 
 
 protected:
-	WeightMapInternal<uint64_t> map{};
+	WeightMapInternal<float> map{};
 
 
 };

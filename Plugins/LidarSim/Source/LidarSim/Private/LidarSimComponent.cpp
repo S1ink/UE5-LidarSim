@@ -1210,11 +1210,44 @@ void UTemporalMap::CloudExport(TArray<FLinearColor>& points, TArray<uint8>& colo
 	}
 }
 
+UTexture2D* UTemporalMap::TextureExport() {
+	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
+	UTexture2D* texture_out = UTexture2D::CreateTransient(this->map.map_size.x(), this->map.map_size.y());
+	uint8_t* raw = reinterpret_cast<uint8_t*>(texture_out->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+	for (int i = 0; i < this->map.map_size.prod(); i++) {
+		reinterpret_cast<uint32_t*>(raw)[i] = 0xFF000000;
+		int y = i / this->map.map_size.x();
+		int x = i % this->map.map_size.x();
+		int idx = x * this->map.map_size[1] + y;
+		if (idx >= this->map.map_size.prod()) continue;
+
+		float val = std::powf((float)this->map.map[idx] / this->map.max, 0.1);
+		float r = val;
+		//float g = 1.f - val;
+		/*float r = (float)x / this->map.map_size.x();
+		float g = (float)y / this->map.map_size.y();*/
+		//raw[i * 4 + 1] = g * 0xFF;
+		raw[i * 4 + 2] = r * 0xFF;
+	}
+	texture_out->GetPlatformData()->Mips[0].BulkData.Unlock();
+#ifdef UpdateResource
+#pragma push_macro("UpdateResource")
+#undef UpdateResource
+#define UND_UpdateResource
+#endif
+	texture_out->UpdateResource();
+#ifdef UND_UpdateResource
+#pragma pop_macro("UpdateResource")
+#undef UND_UpdateResource
+#endif
+	return texture_out;
+}
+
 const FVector2f UTemporalMap::GetMapSize() {
 	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->map.mapSize()) };
 }
-const int64 UTemporalMap::GetMaxWeight() {
-	return static_cast<int64_t>(this->map.getMax());
+const float UTemporalMap::GetMaxWeight() {
+	return this->map.getMax();
 }
 
 
