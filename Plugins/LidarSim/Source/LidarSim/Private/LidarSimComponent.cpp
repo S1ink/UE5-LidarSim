@@ -1192,17 +1192,17 @@ void UTemporalMap::AddPoints(const TArray<FLinearColor>& points, const TArray<in
 
 void UTemporalMap::CloudExport(TArray<FLinearColor>& points, TArray<uint8>& colors, const float z) {
 	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
-	int _area = this->map.map_size.prod();
+	int _area = this->map.area();
 	points.SetNum(_area);
 	colors.SetNum(_area * 4);
 
-	Eigen::Vector2f _off = this->map.map_off + Eigen::Vector2f{ this->map.resolution / 2.f, this->map.resolution / 2.f };
+	Eigen::Vector2f _off = this->map.map_origin/* + Eigen::Vector2f{ this->map.resolution / 2.f, this->map.resolution / 2.f }*/;
 	for (size_t i = 0; i < _area; i++) {
 		reinterpret_cast<Eigen::Vector2f&>(points[i]) =
-			WeightMapInternal<>::gridLoc(i, this->map.map_size).cast<float>() * this->map.resolution + _off;
+			WeightMapBase_::gridLoc(i, this->map.map_size).cast<float>() * this->map.resolution + _off;
 		points[i].B = z;
 		
-		float val = (float)this->map.map[i] / this->map.max;
+		float val = (float)this->map.map_data[i].w / this->map.max();
 		colors[i * 4 + 0] = val * 255;
 		colors[i * 4 + 1] = 0;
 		colors[i * 4 + 2] = 0;
@@ -1214,20 +1214,25 @@ UTexture2D* UTemporalMap::TextureExport() {
 	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
 	UTexture2D* texture_out = UTexture2D::CreateTransient(this->map.map_size.x(), this->map.map_size.y());
 	uint8_t* raw = reinterpret_cast<uint8_t*>(texture_out->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
-	for (int i = 0; i < this->map.map_size.prod(); i++) {
+	for (int i = 0; i < this->map.area(); i++) {
 		reinterpret_cast<uint32_t*>(raw)[i] = 0xFF000000;
 		int y = i / this->map.map_size.x();
 		int x = i % this->map.map_size.x();
-		int idx = x * this->map.map_size[1] + y;
-		if (idx >= this->map.map_size.prod()) continue;
+		int idx = x * this->map.map_size.y() + y;
+		if (idx >= this->map.area()) continue;
 
-		float val = std::powf((float)this->map.map[idx] / this->map.max, 0.1);
-		float r = val;
+		float val = std::powf((float)this->map.map_data[idx].w / this->map.max(), 0.5);
+		if (this->map.map_data[idx].avg_z < 0.f) {
+			raw[i * 4 + 2] = val * 0xFF;
+		}
+		else {
+			raw[i * 4 + 0] = val * 0xFF;
+		}
 		//float g = 1.f - val;
 		/*float r = (float)x / this->map.map_size.x();
 		float g = (float)y / this->map.map_size.y();*/
 		//raw[i * 4 + 1] = g * 0xFF;
-		raw[i * 4 + 2] = r * 0xFF;
+		//raw[i * 4 + 2] = r * 0xFF;
 	}
 	texture_out->GetPlatformData()->Mips[0].BulkData.Unlock();
 #ifdef UpdateResource
@@ -1244,10 +1249,10 @@ UTexture2D* UTemporalMap::TextureExport() {
 }
 
 const FVector2f UTemporalMap::GetMapSize() {
-	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->map.mapSize()) };
+	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->map.size()) };
 }
 const float UTemporalMap::GetMaxWeight() {
-	return this->map.getMax();
+	return this->map.max();
 }
 
 

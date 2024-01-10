@@ -232,29 +232,157 @@ protected:
 
 
 
+class WeightMapBase_ {
+protected:
+	template<typename weight_T, typename stat_T>
+	struct CellBase_ {
+		using Weight_T = weight_T;
+		using Stat_T = stat_T;
+
+		inline static constexpr bool
+			IsAligned = std::is_same<weight_T, stat_T>::value;
+	};
+
+public:
+	template<typename weight_T, typename stat_T = float>
+	struct MapCell_ : CellBase_<weight_T, stat_T> {
+		weight_T w;
+		union {
+			struct { stat_T min_z, max_z, avg_z; };
+			stat_T stat[3];
+		};
+	};
+	template<typename data_T>
+	struct MapCell_Aligned_ : CellBase_<data_T, data_T> {
+		union {
+			struct {
+				data_T w;
+				union {
+					struct { data_T min_z, max_z, avg_z; };
+					data_T stat[3];
+				};
+			};
+			data_T data[4];
+		};
+	};
+
+	template<typename weight_T, typename stat_T = float>
+	using MapCell = typename std::conditional<
+						std::is_same<weight_T, stat_T>::value,
+							MapCell_Aligned_<weight_T>,
+							MapCell_<weight_T, stat_T>
+					>::type;
+
+
+public:
+	/** Align a point to a box grid of the given resolution and offset origin. Result may be negative if lower than current offset. */
+	static Eigen::Vector2i gridAlign(float x, float y, const Eigen::Vector2f& off, float res) {
+		return Eigen::Vector2i{
+			std::floorf((x - off.x()) / res),	// always floor since grid cells are indexed by their "bottom left" corner's raw position
+			std::floorf((y - off.y()) / res)
+		};
+	}
+	static Eigen::Vector2i gridAlign(const Eigen::Vector4f& pt, const Eigen::Vector2f& off, float res) {
+		return gridAlign(pt.x(), pt.y(), off, res);
+	}
+
+	/** Get a raw buffer idx from a 2d index and buffer size (Row~X, Col~Y order) */
+	static int64_t gridIdx(const Eigen::Vector2i& loc, const Eigen::Vector2i& size) {
+		return gridIdx(loc.x(), loc.y(), size);
+	}
+	static int64_t gridIdx(const int x, const int y, const Eigen::Vector2i& size) {
+		return (int64_t)x * size.y() + y;	// rows along x-axis, cols along y-axis, thus (x, y) --> x * #cols + y
+	}
+	static Eigen::Vector2i gridLoc(std::size_t idx, const Eigen::Vector2i& size) {
+		return Eigen::Vector2i{
+			idx / size.y(),
+			idx % size.y()
+		};
+	}
+
+
+};
+
 template<typename weight_T = float>
-class WeightMapInternal {
+class WeightMap : public WeightMapBase_ {
+	static_assert(std::is_arithmetic<weight_T>::value, "");
 	friend class UTemporalMap;
 public:
-	WeightMapInternal() {}
-	~WeightMapInternal() {
-		if (map) delete[] map;
+	using Weight_T = weight_T;
+	using Scalar_T = float;
+	using Cell_T = MapCell<Weight_T, Scalar_T>;
+
+	inline static constexpr bool
+		Cell_IsAligned = Cell_T::IsAligned;
+	inline static constexpr size_t
+		Cell_Size = sizeof(Cell_T);
+
+	template<int64_t val>
+	inline static constexpr Weight_T Weight() {	return static_cast<Weight_T>(val); }
+
+public:
+	WeightMap() {}
+	~WeightMap() {
+		if (map_data) delete[] map_data;
 	}
 
 
-	void reset(float res = 1.f, const Eigen::Vector2f off = Eigen::Vector2f::Zero()) {
-		if (map) delete[] map;
+	void reset(float grid_res = 1.f, const Eigen::Vector2f grid_origin = Eigen::Vector2f::Zero()) {
+		if (map_data) delete[] map_data;
 		map_size = Eigen::Vector2i::Zero();
-		max = (weight_T)0;
+		max_weight = Weight<0>();
 
-		resolution = res <= 0.f ? 1.f : res;
-		map_off = off;
+		resolution = grid_res <= 0.f ? 1.f : grid_res;
+		map_origin = grid_origin;
 	}
-	const Eigen::Vector2i& mapSize() {
+	inline const Eigen::Vector2i& size() {
 		return this->map_size;
 	}
-	const weight_T getMax() {
-		return this->max;
+	inline const int area() {
+		return this->map_size.prod();
+	}
+	inline const Weight_T max() {
+		return this->max_weight;
+	}
+
+
+	bool resizeToBounds(const Eigen::Vector4f& min, const Eigen::Vector4f& max) {
+
+		static const Eigen::Vector2i
+			_zero = Eigen::Vector2i::Zero();
+		const Eigen::Vector2i
+			_min = gridAlign(min, this->map_origin, this->resolution),	// grid cell locations containing min and max, aligned with current offsets
+			_max = gridAlign(max, this->map_origin, this->resolution);
+
+		if (_min.cwiseLess(_zero).any() || _max.cwiseGreater(this->map_size).any()) {
+			const Eigen::Vector2i
+				_low = _min.cwiseMin(_zero),		// new high and low bounds for the map
+				_high = _max.cwiseMax(this->map_size),
+				_size = _high - _low;				// new map size
+
+			const int64_t _area = (int64_t)_size.x() * _size.y();
+			if (_area > 1e8 || _area < 0) return false;		// less than a gigabyte of allocated buffer is ideal
+
+			Cell_T* _map = new Cell_T[_area];
+			memset(_map, 0x00, _area * Cell_Size);	// :O
+
+			const Eigen::Vector2i _diff = _zero - _low;	// by how many grid cells did the origin shift
+			if (this->map_data) {
+				for (int r = 0; r < this->map_size.x(); r++) {		// for each row in existing...
+					memcpy(									// remap to new buffer
+						_map + ((r + _diff.x()) * _size.y() + _diff.y()),	// (row + offset rows) * new row size + offset cols
+						this->map_data + (r * this->map_size.y()),
+						this->map_size.y() * Cell_Size
+					);
+				}
+				delete[] this->map_data;
+			}
+			this->map_data = _map;
+			this->map_size = _size;
+			this->map_origin -= (_diff.cast<float>() * this->resolution);
+		}
+		return true;
+
 	}
 
 	template<typename PointT>
@@ -265,15 +393,7 @@ public:
 			pcl::getMinMax3D<PointT>(cloud, _min, _max);
 			if (this->resizeToBounds(_min, _max)) {
 				for (const PointT& pt : cloud.points) {
-					weight_T& w = map[
-						gridIdx(
-							gridAlign(pt.x, pt.y, map_off, resolution),
-							map_size)
-					];
-					w += (weight_T)1;
-					if (w > max) {
-						max = w;
-					}
+					this->insert<PointT>(pt);
 				}
 			}
 		}
@@ -281,116 +401,41 @@ public:
 			pcl::getMinMax3D<PointT>(cloud, selection, _min, _max);
 			if (this->resizeToBounds(_min, _max)) {
 				for (const pcl::index_t idx : selection) {
-					const PointT& pt = cloud.points[idx];
-					weight_T& w = map[
-						gridIdx(
-							gridAlign(pt.x, pt.y, map_off, resolution),
-							map_size)
-					];
-					w += (weight_T)1;
-					if (w > max) {
-						max = w;
-					}
+					this->insert<PointT>(cloud.points[idx]);
 				}
 			}
 		}
 
 	}
 
-	bool resizeToBounds(const Eigen::Vector4f& min_, const Eigen::Vector4f& max_) {
+protected:
+	template<typename PointT>
+	bool insert(const PointT& pt) {
+		const int64_t i = gridIdx( gridAlign(pt.x, pt.y, this->map_origin, this->resolution), this->map_size );
+#ifndef SKIP_MAP_BOUND_CHECKS
+		if (i >= 0 && i < this->area())
+#endif
+		{
+			Cell_T& k = this->map_data[i];
+			k.w += Weight<1>();
+			if (k.w > this->max_weight) this->max_weight = k.w;
 
-		const Eigen::Vector2i
-			_min = gridAlign(min_, map_off, resolution),	// grid cell locations containing min and max, aligned with current offsets
-			_max = gridAlign(max_, map_off, resolution),
-			_zero = Eigen::Vector2i::Zero();
+			if (pt.z < k.min_z) k.min_z = pt.z;
+			else if (pt.z > k.max_z) k.max_z = pt.z;
+			k.avg_z = ((k.w - Weight<1>()) * k.avg_z + pt.z) / k.w;
 
-		if (_min.cwiseLess(_zero).any() || _max.cwiseGreater(map_size).any()) {
-			const Eigen::Vector2i
-				_low = _min.cwiseMin(_zero),		// new high and low bounds for the map
-				_high = _max.cwiseMax(map_size),
-				_size = _high - _low;				// new map size
-
-			const size_t area = (size_t)_size[0] * _size[1];
-			if (area > 1e10) return false;
-
-			weight_T* _map = new weight_T[area];
-			memset(_map, 0x00, area * sizeof(weight_T));	// :O
-
-			const Eigen::Vector2i _diff = _zero - _low;	// by how many grid cells did the origin shift
-			if (map) {
-				for (int r = 0; r < map_size[0]; r++) {		// for each row in existing...
-					memcpy(									// remap to new buffer
-						_map + ((r + _diff[0]) * _size[1] + _diff[1]),	// (row + offset rows) * new row size + offset cols
-						map + (r * map_size[1]),
-						map_size[1] * sizeof(weight_T)
-					);
-				}
-				delete[] map;
-			}
-			map = _map;
-			map_size = _size;
-			map_off -= (_diff.cast<float>() * resolution);
+			return true;
 		}
-		return true;
-
-	}
-
-	void toMat(cv::Mat& out) {
-		cv::Size2i _size = *reinterpret_cast<cv::Size2i*>(&this->map_size);
-		if (out.size() != _size) {
-			out = cv::Mat::zeros(_size, CV_8UC3);
-		}
-		const size_t len = _size.area();
-		for (size_t i = 0; i < len; i++) {
-			float val;
-			if constexpr (std::is_integral<weight_T>::value) {
-				val = static_cast<float>(map[i]) / static_cast<float>(max);
-			} else {
-				val = static_cast<float>(map[i] / max);
-			}
-			int x = i / map_size[1];
-			int y = i % map_size[1];
-			int idx = (map_size[1] - y) * map_size[0] + x;
-			if (idx >= len) continue;
-			//val = std::pow(val, 0.1);
-			out.data[idx * 3 + 2] = val * 255;
-			//out.data[idx * 3 + 1] = (1.f - val) * 255;
-			//out.data[i * 3 + 1] = 0;
-			//out.data[i * 3 + 2] = 0;
-		}
+		return false;
 	}
 
 protected:
-	/** Align a point to a box grid of the given resolution and offset origin. Result may be negative if lower than current offset. */
-	static Eigen::Vector2i gridAlign(float x, float y, const Eigen::Vector2f& off, float res) {
-		return Eigen::Vector2i{
-			std::floorf((x - off[0]) / res),	// always floor since grid cells are indexed by their "bottom left" corner's raw position
-			std::floorf((y - off[1]) / res)
-		};
-	}
-	static Eigen::Vector2i gridAlign(const Eigen::Vector4f& pt, const Eigen::Vector2f& off, float res) {
-		return gridAlign(pt[0], pt[1], off, res);
-	}
-
-	/** Get a raw buffer idx from a 2d index and buffer size (Row~X, Col~Y order) */
-	static std::size_t gridIdx(const Eigen::Vector2i& loc, const Eigen::Vector2i& size) {
-		return (size_t)loc[0] * size[1] + loc[1];	// rows along x-axis, cols along y-axis, thus (x, y) --> x * #cols + y
-	}
-	static Eigen::Vector2i gridLoc(std::size_t idx, const Eigen::Vector2i& size) {
-		return Eigen::Vector2i{
-			idx / size[1],
-			idx % size[1]
-		};
-	}
-
-protected:
-	float resolution{ 1.f };
-	Eigen::Vector2f map_off{};
-
-	weight_T* map{ nullptr };
+	Scalar_T resolution{ 1.f };
+	Eigen::Vector2f map_origin{};
 	Eigen::Vector2i map_size{};
+	Cell_T* map_data{ nullptr };
 
-	weight_T max{ (weight_T)0 };
+	Weight_T max_weight{ Weight<0>() };
 
 };
 
@@ -430,7 +475,7 @@ public:
 
 
 protected:
-	WeightMapInternal<float> map{};
+	WeightMap<float> map{};
 
 
 };
