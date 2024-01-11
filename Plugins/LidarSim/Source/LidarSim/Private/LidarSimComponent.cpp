@@ -1170,39 +1170,95 @@ void UPCDWriter::addCloud(const pcl::PCLPointCloud2& cloud, const Eigen::Vector4
 
 
 
-void UTemporalMap::Reset(float resolution, const FVector2f offset) {
-	this->map.reset(resolution, *reinterpret_cast<const Eigen::Vector2f*>(&offset));
+void UTemporalMap::Reset(float res, const FVector2f offset) {
+	this->reset(res, *reinterpret_cast<const Eigen::Vector2f*>(&offset));
+	this->tex_buff = nullptr;
 }
 
+#undef UpdateResource
 void UTemporalMap::AddPoints(const TArray<FLinearColor>& points, const TArray<int32>& selection) {
 	SCOPE_CYCLE_COUNTER(STAT_WeightMapInsert);
 	using namespace mem_utils;
 
+	const bool _use_selection = !selection.IsEmpty();
+
+	Eigen::Vector4f _min, _max;
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
-	pcl::Indices select{};
-
 	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
-	memSwap(select, const_cast<TArray<int32>&>(selection));
-
-	this->map.insertPoints<pcl::PointXYZ>(*cloud, select);
-
+	if (_use_selection) {
+		pcl::Indices select{};
+		memSwap(select, const_cast<TArray<int32>&>(selection));
+		pcl::getMinMax3D<pcl::PointXYZ>(*cloud, select, _min, _max);
+		memSwap(select, const_cast<TArray<int32>&>(selection));
+	} else {
+		pcl::getMinMax3D<pcl::PointXYZ>(*cloud, _min, _max);
+	}
 	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
-	memSwap(select, const_cast<TArray<int32>&>(selection));
+
+	const Eigen::Vector2f _old_origin = this->origin();
+	if (this->resizeToBounds(_min, _max)) {
+
+		if (!this->tex_buff || this->tex_buff->GetSizeX() != this->map_size.x() || this->tex_buff->GetSizeY() != this->map_size.y()) {
+			UTexture2D* _old_tex = this->tex_buff;
+			this->tex_buff = UTexture2D::CreateTransient(this->map_size.x(), this->map_size.y(), EPixelFormat::PF_FloatRGB);
+			this->tex_buff->UpdateResource();
+			if (_old_tex) {
+				Eigen::Vector2i _old_size{ _old_tex->GetSizeX(), _old_tex->GetSizeY() };
+				Eigen::Vector2i _diff = ((_old_origin - this->map_origin) / this->resolution).cast<int>();
+				const FUpdateTextureRegion2D _update_region{ (uint32)_diff.x(), (uint32)_diff.y(), 0, 0, (uint32)_old_size.x(), (uint32)_old_size.y() };
+
+				_old_tex->WaitForStreaming();
+				this->tex_buff->WaitForStreaming();
+				this->tex_buff->UpdateTextureRegions(0, 1, &_update_region, _old_size.x() * 16, 16, reinterpret_cast<uint8_t*>(_old_tex->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_ONLY)));
+				this->tex_buff->WaitForStreaming();
+				_old_tex->GetPlatformData()->Mips[0].BulkData.Unlock();
+			}
+		}
+
+		FLinearColor* _frame_buff = reinterpret_cast<FLinearColor*>(this->tex_buff->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+		if (_use_selection) {
+			for (const int32 i : selection) {
+				const FLinearColor& pt = points[i];
+				if (this->insert<pcl::PointXYZ>(reinterpret_cast<const pcl::PointXYZ&>(pt))) {
+					const Eigen::Vector2i loc = this->boundingCell(pt.RGBA[0], pt.RGBA[1]);
+					Cell_T& _cell = this->map_data[gridIdx(loc, this->map_size)];
+					FLinearColor& _out = _frame_buff[loc.x() * this->map_size.y() + loc.y()];
+					_out.A = 1.f;
+					float val = std::powf((float)_cell.w / this->max(), 0.4);
+					if (_cell.avg_z > 0.f) {
+						_out.B = val;
+					}
+					else {
+						_out.R = val;
+					}
+				}
+			}
+		}
+		else {
+			for (const FLinearColor& pt : points) {
+				if (this->insert<pcl::PointXYZ>(reinterpret_cast<const pcl::PointXYZ&>(pt))) {
+					// finish this if its ever worth it
+				}
+			}
+		}
+		this->tex_buff->GetPlatformData()->Mips[0].BulkData.Unlock();
+
+	}
+
 }
 
 void UTemporalMap::CloudExport(TArray<FLinearColor>& points, TArray<uint8>& colors, const float z) {
 	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
-	int _area = this->map.area();
+	int64_t _area = this->area();
 	points.SetNum(_area);
 	colors.SetNum(_area * 4);
 
-	Eigen::Vector2f _off = this->map.map_origin/* + Eigen::Vector2f{ this->map.resolution / 2.f, this->map.resolution / 2.f }*/;
-	for (size_t i = 0; i < _area; i++) {
+	for (int i = 0; i < _area; i++) {
 		reinterpret_cast<Eigen::Vector2f&>(points[i]) =
-			WeightMapBase_::gridLoc(i, this->map.map_size).cast<float>() * this->map.resolution + _off;
+			WeightMapBase_::gridLoc(i, this->map_size).cast<float>() * this->resolution + this->map_origin;
 		points[i].B = z;
 		
-		float val = (float)this->map.map_data[i].w / this->map.max();
+		float val = (float)this->map_data[i].w / this->max();
 		colors[i * 4 + 0] = val * 255;
 		colors[i * 4 + 1] = 0;
 		colors[i * 4 + 2] = 0;
@@ -1212,47 +1268,51 @@ void UTemporalMap::CloudExport(TArray<FLinearColor>& points, TArray<uint8>& colo
 
 UTexture2D* UTemporalMap::TextureExport() {
 	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
-	UTexture2D* texture_out = UTexture2D::CreateTransient(this->map.map_size.x(), this->map.map_size.y());
-	uint8_t* raw = reinterpret_cast<uint8_t*>(texture_out->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
-	for (int i = 0; i < this->map.area(); i++) {
-		reinterpret_cast<uint32_t*>(raw)[i] = 0xFF000000;
-		int y = i / this->map.map_size.x();
-		int x = i % this->map.map_size.x();
-		int idx = x * this->map.map_size.y() + y;
-		if (idx >= this->map.area()) continue;
-
-		float val = std::powf((float)this->map.map_data[idx].w / this->map.max(), 0.5);
-		if (this->map.map_data[idx].avg_z < 0.f) {
-			raw[i * 4 + 2] = val * 0xFF;
-		}
-		else {
-			raw[i * 4 + 0] = val * 0xFF;
-		}
-		//float g = 1.f - val;
-		/*float r = (float)x / this->map.map_size.x();
-		float g = (float)y / this->map.map_size.y();*/
-		//raw[i * 4 + 1] = g * 0xFF;
-		//raw[i * 4 + 2] = r * 0xFF;
-	}
-	texture_out->GetPlatformData()->Mips[0].BulkData.Unlock();
-#ifdef UpdateResource
-#pragma push_macro("UpdateResource")
-#undef UpdateResource
-#define UND_UpdateResource
-#endif
-	texture_out->UpdateResource();
-#ifdef UND_UpdateResource
-#pragma pop_macro("UpdateResource")
-#undef UND_UpdateResource
-#endif
-	return texture_out;
+//	UTexture2D* texture_out = UTexture2D::CreateTransient(this->map_size.x(), this->map_size.y());
+//	uint8_t* raw = reinterpret_cast<uint8_t*>(texture_out->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+//	for (int i = 0; i < this->area(); i++) {
+//		reinterpret_cast<uint32_t*>(raw)[i] = 0xFF000000;
+//		int y = i / this->map_size.x();
+//		int x = i % this->map_size.x();
+//		int idx = x * this->map_size.y() + y;
+//		if (idx >= this->area()) continue;
+//
+//		float val = std::powf((float)this->map_data[idx].w / this->max(), 0.5);
+//		if (this->map_data[idx].avg_z < 0.f) {
+//			raw[i * 4 + 2] = val * 0xFF;
+//		}
+//		else {
+//			raw[i * 4 + 0] = val * 0xFF;
+//		}
+//		//float g = 1.f - val;
+//		/*float r = (float)x / this->map.map_size.x();
+//		float g = (float)y / this->map.map_size.y();*/
+//		//raw[i * 4 + 1] = g * 0xFF;
+//		//raw[i * 4 + 2] = r * 0xFF;
+//	}
+//	texture_out->GetPlatformData()->Mips[0].BulkData.Unlock();
+//#ifdef UpdateResource
+//#pragma push_macro("UpdateResource")
+//#undef UpdateResource
+//#define UND_UpdateResource
+//#endif
+//	texture_out->UpdateResource();
+//#ifdef UND_UpdateResource
+//#pragma pop_macro("UpdateResource")
+//#undef UND_UpdateResource
+//#endif
+//	return texture_out;
+	return this->tex_buff;
 }
 
+const FVector2f UTemporalMap::GetMapOrigin() {
+	return *reinterpret_cast<const FVector2f*>(&this->map_origin);
+}
 const FVector2f UTemporalMap::GetMapSize() {
-	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->map.size()) };
+	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->size()) };
 }
 const float UTemporalMap::GetMaxWeight() {
-	return this->map.max();
+	return this->max();
 }
 
 

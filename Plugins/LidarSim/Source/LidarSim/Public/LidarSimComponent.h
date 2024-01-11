@@ -240,7 +240,7 @@ protected:
 		using Stat_T = stat_T;
 
 		inline static constexpr bool
-			IsAligned = std::is_same<weight_T, stat_T>::value;
+			IsDense = std::is_same<weight_T, stat_T>::value;
 	};
 
 public:
@@ -305,17 +305,20 @@ public:
 
 template<typename weight_T = float>
 class WeightMap : public WeightMapBase_ {
-	static_assert(std::is_arithmetic<weight_T>::value, "");
-	friend class UTemporalMap;
+	//static_assert(std::is_arithmetic<weight_T>::value, "");
+	//friend class UTemporalMap;
 public:
 	using Weight_T = weight_T;
 	using Scalar_T = float;
 	using Cell_T = MapCell<Weight_T, Scalar_T>;
+	using This_T = WeightMap<Weight_T>;
+	using Base_T = WeightMapBase_;
 
 	inline static constexpr bool
-		Cell_IsAligned = Cell_T::IsAligned;
+		Cell_IsDense = Cell_T::IsDense;
 	inline static constexpr size_t
-		Cell_Size = sizeof(Cell_T);
+		Cell_Size = sizeof(Cell_T),
+		Max_Alloc = (1Ui64 << 30) / Cell_Size;		// 1 << 30 ~ 1bn --> limit to ~1 gigabyte
 
 	template<int64_t val>
 	inline static constexpr Weight_T Weight() {	return static_cast<Weight_T>(val); }
@@ -331,28 +334,44 @@ public:
 		if (map_data) delete[] map_data;
 		map_size = Eigen::Vector2i::Zero();
 		max_weight = Weight<0>();
-
 		resolution = grid_res <= 0.f ? 1.f : grid_res;
 		map_origin = grid_origin;
 	}
-	inline const Eigen::Vector2i& size() {
+
+	inline const Eigen::Vector2i& size() const {
 		return this->map_size;
 	}
-	inline const int area() {
-		return this->map_size.prod();
+	inline const int64_t area() const {
+		return (int64_t)this->map_size.x() * this->map_size.y();
 	}
-	inline const Weight_T max() {
+	inline typename std::conditional<(sizeof(Weight_T) > 8),
+		const Weight_T&, const Weight_T
+	>::type max() const {
 		return this->max_weight;
 	}
+	inline const Eigen::Vector2f& origin() const {
+		return this->map_origin;
+	}
+	inline const float gridRes() const {
+		return this->resolution;
+	}
+
+	inline const Eigen::Vector2i boundingCell(const float x, const float y) const {
+		return Base_T::gridAlign(x, y, this->map_origin, this->resolution);
+	}
+	inline const int64_t cellIdxOf(const float x, const float y) const {
+		return Base_T::gridIdx( this->boundingCell(x, y), this->map_size );
+	}
 
 
+	/** Returns false if an invalid realloc was skipped */
 	bool resizeToBounds(const Eigen::Vector4f& min, const Eigen::Vector4f& max) {
 
 		static const Eigen::Vector2i
 			_zero = Eigen::Vector2i::Zero();
 		const Eigen::Vector2i
-			_min = gridAlign(min, this->map_origin, this->resolution),	// grid cell locations containing min and max, aligned with current offsets
-			_max = gridAlign(max, this->map_origin, this->resolution);
+			_min = this->boundingCell(min.x(), min.y()),	// grid cell locations containing min and max, aligned with current offsets
+			_max = this->boundingCell(max.x(), max.y());
 
 		if (_min.cwiseLess(_zero).any() || _max.cwiseGreater(this->map_size).any()) {
 			const Eigen::Vector2i
@@ -361,10 +380,10 @@ public:
 				_size = _high - _low;				// new map size
 
 			const int64_t _area = (int64_t)_size.x() * _size.y();
-			if (_area > 1e8 || _area < 0) return false;		// less than a gigabyte of allocated buffer is ideal
+			if (_area > This_T::Max_Alloc || _area < 0) return false;		// less than a gigabyte of allocated buffer is ideal
 
 			Cell_T* _map = new Cell_T[_area];
-			memset(_map, 0x00, _area * Cell_Size);	// :O
+			memset(_map, 0x00, _area * This_T::Cell_Size);	// :O don't forget this otherwise the map will start with all garbage data
 
 			const Eigen::Vector2i _diff = _zero - _low;	// by how many grid cells did the origin shift
 			if (this->map_data) {
@@ -372,7 +391,7 @@ public:
 					memcpy(									// remap to new buffer
 						_map + ((r + _diff.x()) * _size.y() + _diff.y()),	// (row + offset rows) * new row size + offset cols
 						this->map_data + (r * this->map_size.y()),
-						this->map_size.y() * Cell_Size
+						this->map_size.y() * This_T::Cell_Size
 					);
 				}
 				delete[] this->map_data;
@@ -409,20 +428,21 @@ public:
 	}
 
 protected:
+	/** returns false if accumulation failed (invalid index) */
 	template<typename PointT>
 	bool insert(const PointT& pt) {
-		const int64_t i = gridIdx( gridAlign(pt.x, pt.y, this->map_origin, this->resolution), this->map_size );
+		const int64_t i = this->cellIdxOf(pt.x, pt.y);
 #ifndef SKIP_MAP_BOUND_CHECKS
 		if (i >= 0 && i < this->area())
 #endif
 		{
-			Cell_T& k = this->map_data[i];
-			k.w += Weight<1>();
-			if (k.w > this->max_weight) this->max_weight = k.w;
+			Cell_T& _cell = this->map_data[i];
+			_cell.w += Weight<1>();
+			if (_cell.w > this->max_weight) this->max_weight = _cell.w;
 
-			if (pt.z < k.min_z) k.min_z = pt.z;
-			else if (pt.z > k.max_z) k.max_z = pt.z;
-			k.avg_z = ((k.w - Weight<1>()) * k.avg_z + pt.z) / k.w;
+			if (pt.z < _cell.min_z) _cell.min_z = pt.z;
+			else if (pt.z > _cell.max_z) _cell.max_z = pt.z;
+			_cell.avg_z = ((_cell.w - Weight<1>()) * _cell.avg_z + pt.z) / _cell.w;
 
 			return true;
 		}
@@ -441,7 +461,7 @@ protected:
 
 
 UCLASS(Blueprintable, BlueprintType)
-class LIDARSIM_API UTemporalMap : public UObject {
+class LIDARSIM_API UTemporalMap : public UObject, public WeightMap<float> {
 
 	GENERATED_BODY()
 
@@ -464,6 +484,9 @@ public:
 	UTexture2D* TextureExport();
 
 
+	UFUNCTION(DisplayName = "Get weight map origin", BlueprintCallable, BlueprintPure)
+	const FVector2f GetMapOrigin();
+
 	UFUNCTION(DisplayName = "Get weight map size", BlueprintCallable, BlueprintPure)
 	const FVector2f GetMapSize();
 
@@ -475,7 +498,8 @@ public:
 
 
 protected:
-	WeightMap<float> map{};
+	UTexture2D* tex_buff{ nullptr };
+	//WeightMap<float> map{};
 
 
 };
