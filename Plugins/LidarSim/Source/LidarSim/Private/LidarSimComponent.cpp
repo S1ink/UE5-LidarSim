@@ -3,33 +3,130 @@
 #include <type_traits>
 #include <vector>
 #include <memory>
+#include <chrono>
 
 #include <CoreMinimal.h>
-#include <Physics/PhysicsInterfaceCore.h>
-#include <PhysicalMaterials/PhysicalMaterial.h>
 
 THIRD_PARTY_INCLUDES_START
-#include <pcl/io/pcd_io.h>
 #include <pcl/pcl_macros.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/ModelCoefficients.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
-#include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/segmentation/progressive_morphological_filter.h>
-#include <pcl/filters/morphological_filter.h>
-#include <pcl/filters/extract_indices.h>
+#include <pcl/io/pcd_io.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/crop_box.h>
-#include <pcl/common/transforms.h>
-THIRD_PARTY_INCLUDES_END;
+#include <pcl/filters/morphological_filter.h>
+#include <pcl/segmentation/progressive_morphological_filter.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
 
-#include "TestUtils.h"
+#include "mem_utils.h"
+THIRD_PARTY_INCLUDES_END
 
 
-//#include <vcruntime_new.h>
-//template void pcl::ProgressiveMorphologicalFilter<pcl::PointXYZ>::extract(pcl::Indices& g);
+
+/** PCDTarWriter Impl -- (external) */
+
+PCDTarWriter::~PCDTarWriter() {
+	if (this->head_buff) delete this->head_buff;
+	this->closeIO();
+}
+bool PCDTarWriter::setFile(const char* fname) {
+	this->fio.open(fname, OPEN_MODES);
+	if (!this->fio.is_open()) {
+		this->status_bits |= 0b1;	// fio fail
+		return false;
+	}
+	this->fio.seekp(0, std::ios::end);
+	const spos_t end = this->fio.tellp();
+	if (end < 1024) {
+		this->append_pos = 0;
+	}
+	else {    // maybe also add a "end % 512 == 0" check
+		this->append_pos = end - (spos_t)1024;
+	}
+	return true;
+}
+bool PCDTarWriter::isOpen() {
+	return this->fio.is_open();
+}
+void PCDTarWriter::closeIO() {
+	if (this->isOpen()) {
+		this->fio.close();
+	}
+	this->status_bits &= ~0b1;
+}
+void PCDTarWriter::addCloud(const pcl::PCLPointCloud2& cloud, const Eigen::Vector4f& origin, const Eigen::Quaternionf& orient, bool compress, const char* pcd_fname) {
+	if (this->isOpen() && !(this->status_bits & 0b1)) {
+		const spos_t start = this->append_pos;
+
+		if (!this->head_buff) { this->head_buff = new pcl::io::TARHeader{}; }
+		memset(this->head_buff, 0, sizeof(pcl::io::TARHeader));	// buffer where the header will be so that we can start writing the file data
+
+		this->fio.seekp(start);
+		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);	// write blank header
+		const spos_t pcd_beg = this->fio.tellp();
+
+		int status;
+		if (compress) { status = this->writer.writeBinaryCompressed(this->fio, cloud, origin, orient); }
+		else { status = this->writer.writeBinary(this->fio, cloud, origin, orient); }
+		if (status) return;	// keep the same append position so we overwrite next time
+
+		const spos_t pcd_end = this->fio.tellp();
+		const size_t
+			flen = pcd_end - pcd_beg,
+			padding = (512 - flen % 512);
+
+		this->fio.write(reinterpret_cast<char*>(this->head_buff), padding);	// pad to 512 byte chunk
+		this->append_pos = this->fio.tellp();	// if we add another file, it should start here and overwrite the end padding
+
+		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);		// append 2 zeroed chunks
+		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);
+
+		uint64_t mseconds = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::system_clock::now().time_since_epoch()
+		).count();
+
+		if (pcd_fname) {
+			snprintf(this->head_buff->file_name, 100, pcd_fname);
+		}
+		else {
+			snprintf(this->head_buff->file_name, 100, "pc_%llx.pcd", mseconds);
+		}
+		snprintf(this->head_buff->file_mode, 8, "0100777");
+		snprintf(this->head_buff->uid, 8, "0000000");
+		snprintf(this->head_buff->gid, 8, "0000000");
+		snprintf(this->head_buff->file_size, 12, "%011llo", (uint64_t)flen);
+		snprintf(this->head_buff->mtime, 12, "%011llo", mseconds / 1000);
+		sprintf_s(this->head_buff->ustar, "ustar");
+		sprintf_s(this->head_buff->ustar_version, "00");
+		this->head_buff->file_type[0] = '0';
+
+		uint64_t xsum = 0;
+		for (char* p = reinterpret_cast<char*>(this->head_buff); p < this->head_buff->chksum; p++)
+		{
+			xsum += *p & 0xff;
+		}
+		xsum += (' ' * 8) + this->head_buff->file_type[0];
+		for (char* p = this->head_buff->ustar; p < this->head_buff->uname; p++)		// the only remaining part that we wrote to was ustar and version
+		{
+			xsum += *p & 0xff;
+		}
+		snprintf(this->head_buff->chksum, 7, "%06llo", xsum);
+		this->head_buff->chksum[7] = ' ';
+
+		this->fio.seekp(start);
+		this->fio.write(reinterpret_cast<char*>(this->head_buff),
+			(this->head_buff->uname - this->head_buff->file_name));		// only re-write the byte range that we have modified
+	}
+}
+
+
+
+
+
+/** Customized PMF Impl */
 
 //template<typename PointT>
 //void applyMorphologicalOpenClose(
@@ -128,196 +225,16 @@ void progressiveMorphologicalExtract(
 	}
 }
 
-namespace pcl_api_utils {
-
-	template<
-		typename Point_T = pcl::PointXYZ,
-		int Method_T = pcl::SAC_RANSAC>
-	static void segmodel_perpendicular(
-		pcl::SACSegmentation<Point_T>& seg,
-		double dist_thresh, double angle_thresh,
-		const Eigen::Vector3f& poip_vec = Eigen::Vector3f(0, 0, 1)
-	) {
-		seg.setModelType(pcl::SACMODEL_PERPENDICULAR_PLANE);
-		seg.setMethodType(Method_T);
-		seg.setAxis(poip_vec);
-		seg.setDistanceThreshold(dist_thresh);
-		seg.setEpsAngle(angle_thresh);
-	}
-	template<
-		typename Point_T = pcl::PointXYZ,
-		int Method_T = pcl::SAC_RANSAC>
-	static inline pcl::SACSegmentation<Point_T> segmodel_perpendicular(
-		double dist_thresh, double angle_thresh,
-		const Eigen::Vector3f& poip_vec = Eigen::Vector3f(0, 0, 1)
-	) {
-		pcl::SACSegmentation<Point_T> seg{};
-		segmodel_perpendicular<Point_T, Method_T>(seg, dist_thresh, angle_thresh, poip_vec);
-		return seg;
-	}
-
-	template<
-		typename Point_T = pcl::PointXYZ>
-	static void filter_single(
-		const typename pcl::PointCloud<Point_T>::Ptr cloud,
-		pcl::SACSegmentation<Point_T>& segmodel,
-		pcl::PointIndices& inliers,
-		pcl::ModelCoefficients& coeffs = {}
-	) {
-		segmodel.setInputCloud(cloud);
-		segmodel.segment(inliers, coeffs);
-	}
-	template<
-		typename Point_T = pcl::PointXYZ>
-	static typename pcl::PointCloud<Point_T>::Ptr filter_single(
-		const typename pcl::PointCloud<Point_T>::Ptr cloud,
-		pcl::SACSegmentation<Point_T>& segmodel,
-		typename pcl::PointCloud<Point_T>::Ptr filtered = new PointCloud_T,
-		pcl::ModelCoefficients& coeffs = {},
-		pcl::PointIndices& inliers = {},
-		pcl::ExtractIndices<Point_T>& extractor = {}
-	) {
-		filter_single<Point_T>(cloud, segmodel, inliers, coeffs);
-		extractor.setInputCloud(cloud);
-		extractor.setIndices(inliers);
-		extractor.filter(filtered);
-		return filtered;
-	}
-
-	template<
-		typename Point_T = pcl::PointXYZ,
-		typename Scalar_T = float>
-	static inline pcl::PointCloud<Point_T>::Ptr translate(
-		const pcl::PointCloud<Point_T>& cloud,
-		const Eigen::Matrix4<Scalar_T>& translation,
-		typename pcl::PointCloud<Point_T>::Ptr output = { new PointCloud_T }
-	) {
-		pcl::transformPointCloud(cloud, *output, translation);
-		return output;
-	}
-	template<
-		typename Point_T = pcl::PointXYZ,
-		typename Scalar_T = float>
-	static inline pcl::PointCloud<Point_T>& translate_inline(
-		pcl::PointCloud<Point_T>& cloud,
-		const Eigen::Matrix4<Scalar_T>& translation
-	) {
-		pcl::transformPointCloud(cloud, cloud, translation);
-		return cloud;
-	}
-	template<
-		typename Point_T = pcl::PointXYZ,
-		typename Scalar_T = float>
-	static inline pcl::PointCloud<Point_T>::Ptr translate_inline(
-		typename pcl::PointCloud<Point_T>::Ptr cloud,
-		const Eigen::Matrix4<Scalar_T>& translation
-	) {
-		return translate(*cloud, translation, cloud);
-	}
-
-}
 
 
 
 
 
-namespace mem_utils {
-
-	template<
-		typename v_T,
-		typename a_T,
-		typename alloc_T = std::allocator<v_T>>
-	static bool memSwap(std::vector<v_T, alloc_T>& std_vec, TArray<a_T>& ue_arr) {
-		static constexpr bool
-			valid_destruct = std::is_trivially_destructible<v_T>::value && std::is_trivially_destructible<a_T>::value,
-			valid_memory = sizeof(v_T) == sizeof(a_T)/* && alignof(v_T) == alignof(a_T)*/;	// alignment only matters if it is larger than the size?
-		static_assert(valid_destruct, "Base types must be trivially destructible or else they won't be cleaned up correctly after swapping!");
-		static_assert(valid_memory, "Base types must have similar memory layouts for successful swapping!");
-		if constexpr (valid_destruct && valid_memory) {
-			uintptr_t* std_vec_active_ptr = reinterpret_cast<uintptr_t*>(&std_vec);
-			uintptr_t* ue_arr_active_ptr = reinterpret_cast<uintptr_t*>(&ue_arr);
-			uintptr_t	// uint64_t
-				std_vec_buff_start = std_vec_active_ptr[0],
-				std_vec_buff_elem_end = std_vec_active_ptr[1],
-				std_vec_buff_cap_end = std_vec_active_ptr[2],
-				ue_arr_buff_start = ue_arr_active_ptr[0];
-			uint32_t
-				ue_arr_buff_elem_num = reinterpret_cast<uint32_t*>(ue_arr_active_ptr + 1)[0],
-				ue_arr_buff_cap_num = reinterpret_cast<uint32_t*>(ue_arr_active_ptr + 1)[1];
-			std_vec_active_ptr[0] = ue_arr_buff_start;
-			std_vec_active_ptr[1] = reinterpret_cast<uintptr_t>(reinterpret_cast<a_T*>(ue_arr_buff_start) + ue_arr_buff_elem_num);	// size
-			std_vec_active_ptr[2] = reinterpret_cast<uintptr_t>(reinterpret_cast<a_T*>(ue_arr_buff_start) + ue_arr_buff_cap_num);	// capacity
-			ue_arr_active_ptr[0] = std_vec_buff_start;
-			reinterpret_cast<uint32_t*>(ue_arr_active_ptr + 1)[0] = reinterpret_cast<v_T*>(std_vec_buff_elem_end) - reinterpret_cast<v_T*>(std_vec_buff_start);
-			reinterpret_cast<uint32_t*>(ue_arr_active_ptr + 1)[1] = reinterpret_cast<v_T*>(std_vec_buff_cap_end) - reinterpret_cast<v_T*>(std_vec_buff_start);
-			return true;
-		}
-		return false;
-	}
-	template<
-		typename a_T,
-		typename v_T,
-		typename alloc_T = std::allocator<v_T>>
-	inline static bool memSwap(TArray<a_T>& ue_arr, std::vector<v_T, alloc_T>& std_vec) {
-		return memSwap<v_T, a_T, alloc_T>(std_vec, ue_arr);
-	}
-
-	template<
-		typename p_T,
-		typename a_T>
-	static bool memSwap(pcl::PointCloud<p_T>& cloud, TArray<a_T>& ue_arr) {
-		if (memSwap<p_T, a_T, Eigen::aligned_allocator<p_T>>(cloud.points, ue_arr)) {
-			cloud.width = cloud.points.size();
-			cloud.height = 1;
-			return true;
-		}
-		return false;
-	}
-	template<
-		typename a_T,
-		typename p_T>
-	inline static bool memSwap(TArray<a_T>& ue_arr, pcl::PointCloud<p_T>& cloud) {
-		return memSwap<p_T, a_T>(cloud, ue_arr);
-	}
-
-	template<
-		typename T,
-		typename Alloc_A,
-		typename Alloc_B>
-	static bool memSwap(TArray<T, Alloc_A>& a, TArray<T, Alloc_B>& b) {
-		if constexpr (
-			UE4Array_Private::CanMoveTArrayPointersBetweenArrayTypes<TArray<T, Alloc_A>, TArray<Alloc_B>>() &&
-			(sizeof(TArray<T>) == sizeof(TArray<T, Alloc_A>) && sizeof(TArray<T>) == sizeof(TArray<T, Alloc_B>))
-		) {
-			uint8_t* tmp = new uint8_t[sizeof(TArray<T>)];
-			memcpy(tmp, &a, sizeof(TArray<T>));
-			memcpy(&a, &b, sizeof(TArray<T>));
-			memcpy(&b, tmp, sizeof(TArray<T>));
-			delete[] tmp;
-			return true;
-		}
-		return false;
-	}
-	template<
-		typename T,
-		typename Alloc_A,
-		typename Alloc_B>
-	static bool memSwap(std::vector<T, Alloc_A>& a, std::vector<T, Alloc_B>& b) {
-		if constexpr (std::is_same<Alloc_A, Alloc_B>::value) {
-			std::swap(a, b);
-			return true;
-		}
-		return false;
-	}
-
-}
 
 
-
-
+/** Templated UE Helpers */
 
 #define ASSERT_FP_TYPE(fp_T) static_assert(std::is_floating_point_v<fp_T>, "Type parameter must be floating point type")
-
 
 template<typename fp_T = double>
 static TArray<UE::Math::TVector<fp_T> > sphericalVectorProduct(const TArray<fp_T>& _theta, const TArray<fp_T>& _phi) {
@@ -406,50 +323,57 @@ static void genTraceBounds(
 template<typename fp_T = double>
 static void scan(
 	const AActor* src, const TArray<UE::Math::TVector<fp_T>>& directions, const double range,
-	std::function<void(const FHitResult&, int idx)> export_
+	std::function<void(const FHitResult&, int)> export_
 ) {
 	ASSERT_FP_TYPE(fp_T);
 
-	TStatId stats{};
-	FCollisionObjectQueryParams query_params = FCollisionObjectQueryParams(ECollisionChannel::ECC_WorldStatic);
-	FCollisionQueryParams trace_params = FCollisionQueryParams(TEXT("LiDAR Trace"), stats, true, src);
+	static const TStatId stats{};
+	static const FCollisionObjectQueryParams query_params = FCollisionObjectQueryParams(ECollisionChannel::ECC_WorldStatic);
+	FCollisionQueryParams trace_params = FCollisionQueryParams(TEXT("Scanning Trace"), stats, true, src);
 	trace_params.bReturnPhysicalMaterial = false;	// enable if we do reflections or intensity calculations
 
-	FHitResult result{};
-	FVector start{}, end{};
-
 	const FTransform& to_world = src->ActorToWorld();
+	const FVector start = to_world.GetLocation();
 	const size_t len = directions.Num();
-	//ParallelFor(len,
-	//	[&](int32_t idx) {
-	//		// local result, start, end
-	//		genTraceBounds<double>(to_world, static_cast<FVector>(directions[i]), range, start, end);
-	//		src->GetWorld()->LineTraceSingleByObjectType(
-	//			result, start, end,
-	//			FCollisionObjectQueryParams::DefaultObjectQueryParam, trace_params
-	//		);
-	//		if (result.bBlockingHit) {
-	//			export_(result);
-	//		}
-	//	}
-	//);
-	for (int i = 0; i < len; i++) {
 
-		genTraceBounds<double>(to_world, static_cast<FVector>(directions[i]), range, start, end);
-		// in the future we may want to use a multi-trace and test materials for transparency
-		src->GetWorld()->LineTraceSingleByObjectType( result, start, end, query_params, trace_params );
+	FHitResult _result{};
 
-		if (result.bBlockingHit) {
-			export_(result, i);
+#ifdef TRY_PARALLELIZE_MT
+	ParallelFor(len,
+		[&](int idx) {
+			FHitResult _result_local{};
+			src->GetWorld()->LineTraceSingleByObjectType(
+				_result_local, start,
+				to_world.TransformPositionNoScale(static_cast<FVector>(directions[i]) * range),
+				query_params, trace_params
+			);
+			if (_result_local.bBlockingHit) {
+				export_(_result_local, i);
+			}
 		}
-
+	);
+#else
+	for (int i = 0; i < len; i++) {
+		src->GetWorld()->LineTraceSingleByObjectType(
+			_result, start,
+			to_world.TransformPositionNoScale(static_cast<FVector>(directions[i]) * range),
+			query_params, trace_params );
+		if (_result.bBlockingHit) {
+			export_(_result, i);
+		}
 	}
-
+#endif
 }
 
 
 
 
+
+
+
+
+
+/** Begin LidarSim Impl */
 
 DECLARE_STATS_GROUP(TEXT("LidarSimulation"), STATGROUP_LidarSim, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("Bulk Scan"), STAT_BulkScan, STATGROUP_LidarSim);
@@ -464,40 +388,32 @@ DECLARE_CYCLE_STAT(TEXT("Weight Map Export"), STAT_WeightMapExport, STATGROUP_Li
 DEFINE_LOG_CATEGORY(LidarSimComponent);
 
 
-//UScanResult::UScanResult() {
-//	this->inst = UScanResult::instance++;
-//	UE_LOG(LidarSimComponent, Warning, TEXT("UScanResult Instance Created[%d]"), this->inst);
-//}
-//UScanResult::~UScanResult() {
-//	UE_LOG(LidarSimComponent, Warning, TEXT("UScanResult Instance Destroyed[%d]"), this->inst);
-//}
-//
-//TArray<FLinearColor>& UScanResult::GetCloud() {
-//	return this->cloud;
-//}
-//TArray<float>& UScanResult::GetRanges() {
-//	return this->ranges;
-//}
-//void UScanResult::Clear() {
-//	this->clear();
-//}
 
 
+
+/* ULidarSimulationComponent -- Component specific functionality */
 
 const TArray<int32>& ULidarSimulationComponent::GetDefaultSelection() {
-	/*if (NO_SELECTION.Max() != (typename decltype(NO_SELECTION)::SizeType)-1) {
-		(reinterpret_cast<uint8_t*>(const_cast<TArray<int32>*>(&NO_SELECTION))
-			+ sizeof(decltype(NO_SELECTION))
-			- sizeof(typename decltype(NO_SELECTION)::SizeType))[0] = -1;
-	}*/
 	return ULidarSimulationComponent::NO_SELECTION;
 }
-static bool checkNoSelect(const TArray<int32>& a) {
-	//return a.Max() == (TArray<int32>::SizeType)(-1);
-	return a.IsEmpty();
+void ULidarSimulationComponent::Scan(
+	const TArray<FVector>& directions, /*UScanResult* cloud_out,*/
+	TArray<FLinearColor>& cloud_out, TArray<float>& ranges_out,
+	const float max_range, const float noise_distance_scale
+) {
+	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
+	ULidarSimulationUtility::LidarScan( this->GetOwner(), directions, cloud_out, ranges_out, max_range, noise_distance_scale );
 }
 
-void ULidarSimulationComponent::ConvertToRadians(TArray<float>& thetas, TArray<float>& phis) {
+
+
+
+
+
+
+/* ULidarSimulationUtility -- Static helpers */
+
+void ULidarSimulationUtility::ConvertToRadians(TArray<float>& thetas, TArray<float>& phis) {
 	for (int i = 0; i < thetas.Num(); i++) {
 		thetas[i] = FMath::DegreesToRadians(thetas[i]);
 	}
@@ -505,53 +421,20 @@ void ULidarSimulationComponent::ConvertToRadians(TArray<float>& thetas, TArray<f
 		phis[i] = FMath::DegreesToRadians(phis[i]);
 	}
 }
-
-void ULidarSimulationComponent::GenerateDirections(const TArray<float>& thetas, const TArray<float>& phis, TArray<FVector>& directions) {
+void ULidarSimulationUtility::GenerateDirections(const TArray<float>& thetas, const TArray<float>& phis, TArray<FVector>& directions) {
 	sphericalVectorProduct<float, double>(thetas, phis, directions);
 }
 
-//void ULidarSimulationComponent::Scan_0(const TArray<FVector>& directions, TArray<FVector4>& hits, const float max_range, const float noise_distance_scale) {
-//	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
-//	if (hits.Num() != 0) {
-//		UE_LOG(LidarSimComponent, Warning, TEXT("[SCAN]: Hits output array contains prexisting elements."));
-//	}
-//	scan<double>(this->GetOwner(), directions, max_range,
-//		[&](const FHitResult& result, int idx) {
-//			hits.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)), 1.0);
-//		}
-//	);
-//}
-//void ULidarSimulationComponent::Scan_1(const TArray<FVector>& directions, TArray<FVector>& positions, TArray<float>& intensities, const float max_range, const float noise_distance_scale) {
-//	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
-//	if (positions.Num() != 0) {					UE_LOG(LidarSimComponent, Warning, TEXT("Positions output array contains prexisting elements.")); }
-//	if (intensities.Num() != 0) {				UE_LOG(LidarSimComponent, Warning, TEXT("Intensities output array contains prexisting elements.")); }
-//	if (positions.Num() != intensities.Num()) { UE_LOG(LidarSimComponent, Error, TEXT("Output arrays have unequal initial sizes - outputs will be misaligned.")); }
-//	scan<double>(this->GetOwner(), directions, max_range,
-//		[&](const FHitResult& result, int idx) {
-//			positions.Emplace(result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance)));
-//			intensities.Add(1.0);
-//		}
-//	);
-//}
-void ULidarSimulationComponent::Scan(
-	const TArray<FVector>& directions, /*UScanResult* cloud_out,*/
+void ULidarSimulationUtility::LidarScan(
+	const AActor* src, const TArray<FVector>& directions,
 	TArray<FLinearColor>& cloud_out, TArray<float>& ranges_out,
 	const float max_range, const float noise_distance_scale
 ) {
-	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
-	/*if (!cloud_out) {
-		UE_LOG(LidarSimComponent, Error, TEXT("Invalid scanning buffer (nullptr)!"));
-		return;
-	}*/
-	/*if (cloud_out->cloud.Num() != 0 || cloud_out->ranges.Num() != 0) {
-		UE_LOG(LidarSimComponent, Warning, TEXT("Scan result may have contained prexisting elements!"));
-		cloud_out->clear();
-	}*/
 	cloud_out.SetNum(0);
 	ranges_out.SetNum(0);
 	cloud_out.Reserve(directions.Num());
 	ranges_out.Reserve(directions.Num());
-	scan<double>(this->GetOwner(), directions, max_range,
+	scan<double>(src, directions, max_range,
 		[&](const FHitResult& result, int idx) {
 			const float noise = FMath::FRand() * noise_distance_scale * result.Distance;
 			cloud_out.Emplace(result.Location + (directions[idx] * noise));
@@ -560,39 +443,54 @@ void ULidarSimulationComponent::Scan(
 	);
 }
 
-double ULidarSimulationComponent::SavePointsToFile(const TArray<FLinearColor>& points, const FString& fname) {
-	using namespace mem_utils;
-	const double a = FPlatformTime::Seconds();
-	pcl::PointCloud<pcl::PointXYZ> cloud;
-	memSwap(cloud, const_cast<TArray<FLinearColor>&>(points));	// swap to point cloud
-	if (pcl::io::savePCDFile<pcl::PointXYZ>(std::string(TCHAR_TO_UTF8(*fname)), cloud) != 0) {
-		UE_LOG(LidarSimComponent, Error, TEXT("Failed to save points to file: %s"), *fname);
+
+
+/** Filter functions */
+
+void ULidarSimulationUtility::Voxelize(
+	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<FLinearColor>& out,
+	const FVector3f& leaf_size
+) {
+	SCOPE_CYCLE_COUNTER(STAT_Voxelize);
+
+	auto _in = create_mem_snapshot(in);
+	auto _selection = create_mem_snapshot(selection);
+
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
+	pcl::PointCloud<pcl::PointXYZ> filtered{};
+	pcl::VoxelGrid<pcl::PointXYZ> filter{};
+
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	filter.setInputCloud(cloud);
+	filter.setLeafSize(leaf_size.X, leaf_size.Y, leaf_size.Z);
+
+	if (!selection.IsEmpty()) {
+		pcl::IndicesPtr select{ new pcl::Indices };
+		memSwap(*select, const_cast<TArray<int32>&>(selection));
+		filter.setIndices(select);
+		filter.filter(filtered);
+		memSwap(*select, const_cast<TArray<int32>&>(selection));
+	} else {
+		filter.filter(filtered);
 	}
-	memSwap(cloud, const_cast<TArray<FLinearColor>&>(points));	// swap back since the point cloud gets deleted
-	return FPlatformTime::Seconds() - a;
+
+	out.SetNumUninitialized(filtered.size());
+	check(sizeof(decltype(filtered)::PointType) == sizeof(FLinearColor));	// future proofing
+	memcpy(out.GetData(), filtered.points.data(), filtered.size() * sizeof(FLinearColor));
+
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
+
+	check(compare_mem_snapshot(in, _in));
+	check(compare_mem_snapshot(selection, _selection));
 }
 
-
-
-template<typename T>
-std::unique_ptr<uint8_t[]> create_mem_snapshot(const T& val) {
-	uint8_t* buff = new uint8_t[sizeof(T)];
-	memcpy(buff, &val, sizeof(T));
-	return std::unique_ptr<uint8_t[]>{buff};
-}
-template<typename T>
-bool compare_mem_snapshot(const T& val, std::unique_ptr<uint8_t[]>& snap) {
-	return !memcmp(&val, snap.get(), sizeof(T));
-}
-
-
-void ULidarSimulationComponent::SegmentPlane(
+void ULidarSimulationUtility::FilterPlane(
 	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<int32>& out,
 	FVector4f& plane_fit, const FVector3f& target_plane_normal,
 	double fit_distance_threshold, double fit_theta_threshold
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_SegmentPoip);
-	using namespace mem_utils;
 
 	auto _in = create_mem_snapshot(in);
 	auto _selection = create_mem_snapshot(selection);
@@ -613,18 +511,14 @@ void ULidarSimulationComponent::SegmentPlane(
 	filter.setEpsAngle(fit_theta_threshold);
 	filter.setOptimizeCoefficients(false);
 
-	if (checkNoSelect(selection)) {
-		filter.segment(filtered, fit_coeffs);
-	} else if (!selection.IsEmpty()) {
+	if (!selection.IsEmpty()) {
 		pcl::IndicesPtr select{ new pcl::Indices };
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 		filter.setIndices(select);
 		filter.segment(filtered, fit_coeffs);
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 	} else {
-		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
-		check(compare_mem_snapshot(in, _in));
-		return;
+		filter.segment(filtered, fit_coeffs);
 	}
 	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
 
@@ -639,55 +533,11 @@ void ULidarSimulationComponent::SegmentPlane(
 	check(compare_mem_snapshot(selection, _selection));
 }
 
-void ULidarSimulationComponent::Voxelize(
-	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<FLinearColor>& out,
-	const FVector3f& leaf_size
-) {
-	SCOPE_CYCLE_COUNTER(STAT_Voxelize);
-	using namespace mem_utils;
-
-	auto _in = create_mem_snapshot(in);
-	auto _selection = create_mem_snapshot(selection);
-
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
-	pcl::PointCloud<pcl::PointXYZ> filtered{};
-	pcl::VoxelGrid<pcl::PointXYZ> filter{};
-
-	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
-
-	filter.setInputCloud(cloud);
-	filter.setLeafSize(leaf_size.X, leaf_size.Y, leaf_size.Z);
-
-	if (checkNoSelect(selection)) {
-		filter.filter(filtered);
-	} else if (!selection.IsEmpty()) {
-		pcl::IndicesPtr select{ new pcl::Indices };
-		memSwap(*select, const_cast<TArray<int32>&>(selection));
-		filter.setIndices(select);
-		filter.filter(filtered);
-		memSwap(*select, const_cast<TArray<int32>&>(selection));
-	} else {
-		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
-		check(compare_mem_snapshot(in, _in));
-		return;
-	}
-
-	out.SetNumUninitialized(filtered.size());
-	check(sizeof(decltype(filtered)::PointType) == sizeof(FLinearColor));	// future proofing
-	memcpy(out.GetData(), filtered.points.data(), filtered.size() * sizeof(FLinearColor));
-
-	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
-
-	check(compare_mem_snapshot(in, _in));
-	check(compare_mem_snapshot(selection, _selection));
-}
-
-void ULidarSimulationComponent::FilterCoords(
+void ULidarSimulationUtility::FilterCartesian(
 	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<int32>& out,
 	const FVector3f& min, const FVector3f& max
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_FilterCoords);
-	using namespace mem_utils;
 
 	auto _in = create_mem_snapshot(in);
 	auto _selection = create_mem_snapshot(selection);
@@ -702,18 +552,14 @@ void ULidarSimulationComponent::FilterCoords(
 	filter.setMin({ min.X, min.Y, min.Z, 1.f });
 	filter.setMax({ max.X, max.Y, max.Z, 1.f });
 
-	if (checkNoSelect(selection)) {
-		filter.filter(filtered);
-	} else if (!selection.IsEmpty()) {
+	if (!selection.IsEmpty()) {
 		pcl::IndicesPtr select{ new pcl::Indices };
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 		filter.setIndices(select);
 		filter.filter(filtered);
 		memSwap(*select, const_cast<TArray<int32>&>(selection));
 	} else {
-		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(in));
-		check(compare_mem_snapshot(in, _in));
-		return;
+		filter.filter(filtered);
 	}
 
 	out.Reset();
@@ -725,23 +571,14 @@ void ULidarSimulationComponent::FilterCoords(
 	check(compare_mem_snapshot(selection, _selection));
 }
 
-void ULidarSimulationComponent::FilterRange(
+void ULidarSimulationUtility::FilterRange(
 	const TArray<float>& in, const TArray<int32>& selection, TArray<int32>& out,
 	const float max, const float min
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_FilterRange);
 
-	if (checkNoSelect(selection)) {
-		out.Reset();
-		out.Reserve(in.Num());
-		for (int32 i = 0; i < in.Num(); i++) {
-			const float r = in[i];
-			if (r <= max && r >= min) {
-				out.Add(i);
-			}
-		}
-	} else if(!selection.IsEmpty()) {
-		out.Reset();
+	out.Reset();
+	if(!selection.IsEmpty()) {
 		out.Reserve(selection.Num());
 		for (size_t i = 0; i < selection.Num(); i++) {
 			const int32 idx = selection[i];
@@ -751,10 +588,18 @@ void ULidarSimulationComponent::FilterRange(
 			}
 
 		}
+	} else {
+		out.Reserve(in.Num());
+		for (int32 i = 0; i < in.Num(); i++) {
+			const float r = in[i];
+			if (r <= max && r >= min) {
+				out.Add(i);
+			}
+		}
 	}
 }
 
-void ULidarSimulationComponent::PMFilter(
+void ULidarSimulationUtility::PMFilter(
 	const TArray<FLinearColor>& in, const TArray<int32>& selection, TArray<int32>& out_ground,
 	const float base_,
 	const int max_window_size_,
@@ -765,7 +610,6 @@ void ULidarSimulationComponent::PMFilter(
 	const bool exponential_
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_PMFilter);
-	using namespace mem_utils;
 
 	auto _in = create_mem_snapshot(in);
 	auto _selection = create_mem_snapshot(selection);
@@ -871,7 +715,9 @@ void ULidarSimulationComponent::PMFilter(
 
 
 
-void ULidarSimulationComponent::RecolorPoints(
+/** Point cloud utilites */
+
+void ULidarSimulationUtility::RecolorPoints(
 	TArray<uint8_t>& colors, const TArray<int32_t>& selection,
 	const FColor color
 ) {
@@ -891,7 +737,7 @@ void ULidarSimulationComponent::RecolorPoints(
 	}
 }
 
-void ULidarSimulationComponent::RemoveSelection(TArray<FLinearColor>& points, const TArray<int32>& selection) {
+void ULidarSimulationUtility::RemoveSelection(TArray<FLinearColor>& points, const TArray<int32>& selection) {
 	size_t last = points.Num() - 1;
 	for (size_t i = 0; i < selection.Num(); i++) {
 		memcpy(&points[selection[i]], &points[last], sizeof(FLinearColor));	// overwrite each location to be removed
@@ -900,7 +746,7 @@ void ULidarSimulationComponent::RemoveSelection(TArray<FLinearColor>& points, co
 	points.SetNum(last + 1, false);
 }
 
-void ULidarSimulationComponent::NegateSelection(const TArray<int32>& base, const TArray<int32>& selection, TArray<int32>& negate) {
+void ULidarSimulationUtility::NegateSelection(const TArray<int32>& base, const TArray<int32>& selection, TArray<int32>& negate) {
 	if (base.Num() <= selection.Num()) {
 		return;
 	}
@@ -922,7 +768,7 @@ void ULidarSimulationComponent::NegateSelection(const TArray<int32>& base, const
 	}
 }
 
-void ULidarSimulationComponent::NegateSelection2(const int32 base, const TArray<int32>& selection, TArray<int32>& negate) {
+void ULidarSimulationUtility::NegateSelection2(const int32 base, const TArray<int32>& selection, TArray<int32>& negate) {
 	if (base <= selection.Num()) {
 		return;
 	}
@@ -948,52 +794,7 @@ void ULidarSimulationComponent::NegateSelection2(const int32 base, const TArray<
 
 
 
-struct EIGEN_ALIGN16 PointXYZIR {
-	PCL_ADD_POINT4D;
-
-	float intensity;
-	uint16_t ring;
-
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-};
-
-POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZIR,
-	(float, x, x)
-	(float, y, y)
-	(float, z, z)
-	(float, intensity, intensity)
-	(uint16_t, ring, ring)
-)
-
-void ULidarSimulationComponent::RingExport(
-	const TArray<FVector>& directions, const TArray<int>& ring_ids, const FString& fname,
-	const float max_range, const float noise_distance_scale
-) {
-	if (directions.Num() == ring_ids.Num() && !fname.IsEmpty()) {
-		pcl::PointCloud<PointXYZIR>::Ptr cloud{ new pcl::PointCloud<PointXYZIR> };
-		cloud->points.reserve(directions.Num());
-		scan<double>(this->GetOwner(), directions, max_range,
-			[&](const FHitResult& result, int idx) {
-				const FVector point = result.Location + (directions[idx] * (FMath::FRand() * noise_distance_scale * result.Distance));
-				cloud->points.emplace_back( PointXYZIR{
-					(float)point.X,
-					(float)point.Y,
-					(float)point.Z,
-					1.f, 0.f, (uint16_t)ring_ids[idx] }
-				);
-			}
-		);
-		cloud->width = cloud->points.size();
-		cloud->height = 1;
-		pcl::io::savePCDFileBinaryCompressed(std::string(TCHAR_TO_UTF8(*fname)), *cloud);
-	}
-}
-
-
-
-void ULidarSimulationComponent::BreakUE(TArray<FLinearColor>& pts_buff, TArray<int32>& indices) {
-
-	using namespace mem_utils;
+void ULidarSimulationUtility::DestructiveTesting(TArray<FLinearColor>& pts_buff, TArray<int32>& indices) {
 
 	std::vector<uint32_t> reaper{};
 	uintptr_t* data = reinterpret_cast<uintptr_t*>(&reaper);
@@ -1042,35 +843,44 @@ void ULidarSimulationComponent::BreakUE(TArray<FLinearColor>& pts_buff, TArray<i
 
 
 
+/** UScanResult */
+
+//TArray<FLinearColor>& UScanResult::GetCloud() {
+//	return this->cloud;
+//}
+//TArray<float>& UScanResult::GetRanges() {
+//	return this->ranges;
+//}
+//void UScanResult::Clear() {
+//	this->clear();
+//}
 
 
-#include <chrono>
 
-UPCDWriter::~UPCDWriter() {
-	if (this->head_buff) delete this->head_buff;
-	this->closeIO();
-}
+
+
+
+
+
+/** UPCDWriter -- Point cloud IO blueprint wrapper */
 
 bool UPCDWriter::Open(const FString& fname) {
-	if(this->IsOpen()) {
-		this->Close();
-	}
+	this->Close();
 	return this->setFile(TCHAR_TO_UTF8(*fname));
 }
 void UPCDWriter::Close() {
 	this->closeIO();
 }
 bool UPCDWriter::IsOpen() {
-	return this->fio.is_open();
+	return isOpen();
 }
 bool UPCDWriter::Append(const FString& fname, const TArray<FLinearColor>& positions, const FVector3f pos, const FQuat4f orient, bool compress) {
-	using namespace mem_utils;
 	if (this->IsOpen() && !this->status_bits) {
 		memSwap(this->swap_cloud, const_cast<TArray<FLinearColor>&>(positions));
-		pcl::toPCLPointCloud2(this->swap_cloud, this->write_cloud);
+		pcl::toPCLPointCloud2(this->swap_cloud, this->temp_cloud);
 		const char* fn = fname.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*fname);
 		this->addCloud(
-			this->write_cloud,
+			this->temp_cloud,
 			Eigen::Vector4f{ pos.X, pos.Y, pos.Z, 1.f },
 			Eigen::Quaternionf{ orient.W, orient.X, orient.Y, orient.Z },
 			compress,
@@ -1082,85 +892,15 @@ bool UPCDWriter::Append(const FString& fname, const TArray<FLinearColor>& positi
 	return false;
 }
 
-bool UPCDWriter::setFile(const char* fname) {
-	this->fio.open(fname, OPEN_MODES);
-	if (!this->fio.is_open()) {
-		this->status_bits |= 0b1;	// fio fail
-		return false;
+double UPCDWriter::SavePointsToFile(const TArray<FLinearColor>& points, const FString& fname) {
+	const double a = FPlatformTime::Seconds();
+	pcl::PointCloud<pcl::PointXYZ> cloud{};
+	memSwap(cloud, const_cast<TArray<FLinearColor>&>(points));	// swap to point cloud
+	if (pcl::io::savePCDFile<pcl::PointXYZ>(std::string(TCHAR_TO_UTF8(*fname)), cloud) != 0) {
+		UE_LOG(LidarSimComponent, Error, TEXT("Failed to save points to file: %s"), *fname);
 	}
-	this->fio.seekp(0, std::ios::end);
-	const spos_t end = this->fio.tellp();
-	if (end < 1024) {
-		this->append_pos = 0;
-	} else {    // maybe also add a "end % 512 == 0" check
-		this->append_pos = end - (spos_t)1024;
-	}
-	return true;
-}
-void UPCDWriter::closeIO() {
-	if (this->fio.is_open()) {
-		this->fio.close();
-	}
-	this->status_bits &= ~0b1;
-}
-void UPCDWriter::addCloud(const pcl::PCLPointCloud2& cloud, const Eigen::Vector4f& origin, const Eigen::Quaternionf& orient, bool compress, const char* pcd_fname) {
-	if (this->IsOpen() && !(this->status_bits & 0b1)) {
-		const spos_t start = this->append_pos;
-
-		if (!this->head_buff) { this->head_buff = new pcl::io::TARHeader{}; }
-		memset(this->head_buff, 0, sizeof(pcl::io::TARHeader));	// buffer where the header will be so that we can start writing the file data
-
-		this->fio.seekp(start);
-		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);	// write blank header
-		const spos_t pcd_beg = this->fio.tellp();
-
-		int status;
-		if (compress) { status = this->writer.writeBinaryCompressed(this->fio, cloud, origin, orient); }
-		else { status = this->writer.writeBinary(this->fio, cloud, origin, orient); }
-		if (status) return;	// keep the same append position so we overwrite next time
-
-		const spos_t pcd_end = this->fio.tellp();
-		const size_t
-			flen = pcd_end - pcd_beg,
-			padding = (512 - flen % 512);
-
-		this->fio.write(reinterpret_cast<char*>(this->head_buff), padding);	// pad to 512 byte chunk
-		this->append_pos = this->fio.tellp();	// if we add another file, it should start here and overwrite the end padding
-
-		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);		// append 2 zeroed chunks
-		this->fio.write(reinterpret_cast<char*>(this->head_buff), 512);
-
-		uint64_t mseconds = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
-			std::chrono::system_clock::now().time_since_epoch()
-				).count();
-
-		if (pcd_fname) {
-			snprintf(this->head_buff->file_name, 100, pcd_fname);
-		} else {
-			snprintf(this->head_buff->file_name, 100, "pc_%llx.pcd", mseconds);
-		}
-		snprintf(this->head_buff->file_mode, 8, "0100777");
-		snprintf(this->head_buff->uid, 8, "0000000");
-		snprintf(this->head_buff->gid, 8, "0000000");
-		snprintf(this->head_buff->file_size, 12, "%011llo", (uint64_t)flen);
-		snprintf(this->head_buff->mtime, 12, "%011llo", mseconds / 1000);
-		sprintf(this->head_buff->ustar, "ustar");
-		sprintf(this->head_buff->ustar_version, "00");
-		this->head_buff->file_type[0] = '0';
-
-		uint64_t xsum = 0;
-		for (char* p = reinterpret_cast<char*>(this->head_buff); p < this->head_buff->chksum; p++)
-			{ xsum += *p & 0xff; }
-		xsum += (' ' * 8) + this->head_buff->file_type[0];
-		for (char* p = this->head_buff->ustar; p < this->head_buff->uname; p++)		// the only remaining part that we wrote to was ustar and version
-			{ xsum += *p & 0xff; }
-		snprintf(this->head_buff->chksum, 7, "%06llo", xsum);
-		this->head_buff->chksum[7] = ' ';
-
-		this->fio.seekp(start);
-		this->fio.write(reinterpret_cast<char*>(this->head_buff),
-			(this->head_buff->uname - this->head_buff->file_name));		// only re-write the byte range that we have modified
-	}
+	memSwap(cloud, const_cast<TArray<FLinearColor>&>(points));	// swap back since the point cloud gets deleted
+	return FPlatformTime::Seconds() - a;
 }
 
 
@@ -1170,84 +910,98 @@ void UPCDWriter::addCloud(const pcl::PCLPointCloud2& cloud, const Eigen::Vector4
 
 
 
-void UTemporalMap::Reset(float res, const FVector2f offset) {
+
+
+
+/** UAccumulatorMap -- Weight map for blueprints wrapper */
+
+void UAccumulatorMap::Reset(float res, const FVector2f offset) {
 	this->reset(res, *reinterpret_cast<const Eigen::Vector2f*>(&offset));
 	this->tex_buff = nullptr;
 }
 
-#undef UpdateResource
-void UTemporalMap::AddPoints(const TArray<FLinearColor>& points, const TArray<int32>& selection) {
+//#undef UpdateResource
+void UAccumulatorMap::AddPoints(const TArray<FLinearColor>& points, const TArray<int32>& selection) {
 	SCOPE_CYCLE_COUNTER(STAT_WeightMapInsert);
-	using namespace mem_utils;
-
-	const bool _use_selection = !selection.IsEmpty();
-
-	Eigen::Vector4f _min, _max;
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
-	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
-	if (_use_selection) {
+	{
+		pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
 		pcl::Indices select{};
+
+		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
 		memSwap(select, const_cast<TArray<int32>&>(selection));
-		pcl::getMinMax3D<pcl::PointXYZ>(*cloud, select, _min, _max);
+		this->insertPoints(*cloud, select);
 		memSwap(select, const_cast<TArray<int32>&>(selection));
-	} else {
-		pcl::getMinMax3D<pcl::PointXYZ>(*cloud, _min, _max);
+		memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
 	}
-	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
 
-	const Eigen::Vector2f _old_origin = this->origin();
-	if (this->resizeToBounds(_min, _max)) {
+	//const bool _use_selection = !selection.IsEmpty();
 
-		if (!this->tex_buff || this->tex_buff->GetSizeX() != this->map_size.x() || this->tex_buff->GetSizeY() != this->map_size.y()) {
-			UTexture2D* _old_tex = this->tex_buff;
-			this->tex_buff = UTexture2D::CreateTransient(this->map_size.x(), this->map_size.y(), EPixelFormat::PF_FloatRGB);
-			this->tex_buff->UpdateResource();
-			if (_old_tex) {
-				Eigen::Vector2i _old_size{ _old_tex->GetSizeX(), _old_tex->GetSizeY() };
-				Eigen::Vector2i _diff = ((_old_origin - this->map_origin) / this->resolution).cast<int>();
-				const FUpdateTextureRegion2D _update_region{ (uint32)_diff.x(), (uint32)_diff.y(), 0, 0, (uint32)_old_size.x(), (uint32)_old_size.y() };
+	//Eigen::Vector4f _min, _max;
+	//pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
+	//memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
+	//if (_use_selection) {
+	//	pcl::Indices select{};
+	//	memSwap(select, const_cast<TArray<int32>&>(selection));
+	//	pcl::getMinMax3D<pcl::PointXYZ>(*cloud, select, _min, _max);
+	//	memSwap(select, const_cast<TArray<int32>&>(selection));
+	//} else {
+	//	pcl::getMinMax3D<pcl::PointXYZ>(*cloud, _min, _max);
+	//}
+	//memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
 
-				_old_tex->WaitForStreaming();
-				this->tex_buff->WaitForStreaming();
-				this->tex_buff->UpdateTextureRegions(0, 1, &_update_region, _old_size.x() * 16, 16, reinterpret_cast<uint8_t*>(_old_tex->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_ONLY)));
-				this->tex_buff->WaitForStreaming();
-				_old_tex->GetPlatformData()->Mips[0].BulkData.Unlock();
-			}
-		}
+	//const Eigen::Vector2f _old_origin = this->origin();
+	//if (this->resizeToBounds(_min, _max)) {
 
-		FLinearColor* _frame_buff = reinterpret_cast<FLinearColor*>(this->tex_buff->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
-		if (_use_selection) {
-			for (const int32 i : selection) {
-				const FLinearColor& pt = points[i];
-				if (this->insert<pcl::PointXYZ>(reinterpret_cast<const pcl::PointXYZ&>(pt))) {
-					const Eigen::Vector2i loc = this->boundingCell(pt.RGBA[0], pt.RGBA[1]);
-					Cell_T& _cell = this->map_data[gridIdx(loc, this->map_size)];
-					FLinearColor& _out = _frame_buff[loc.x() * this->map_size.y() + loc.y()];
-					_out.A = 1.f;
-					float val = std::powf((float)_cell.w / this->max(), 0.4);
-					if (_cell.avg_z > 0.f) {
-						_out.B = val;
-					}
-					else {
-						_out.R = val;
-					}
-				}
-			}
-		}
-		else {
-			for (const FLinearColor& pt : points) {
-				if (this->insert<pcl::PointXYZ>(reinterpret_cast<const pcl::PointXYZ&>(pt))) {
-					// finish this if its ever worth it
-				}
-			}
-		}
-		this->tex_buff->GetPlatformData()->Mips[0].BulkData.Unlock();
+	//	if (!this->tex_buff || this->tex_buff->GetSizeX() != this->map_size.x() || this->tex_buff->GetSizeY() != this->map_size.y()) {
+	//		UTexture2D* _old_tex = this->tex_buff;
+	//		this->tex_buff = UTexture2D::CreateTransient(this->map_size.x(), this->map_size.y(), EPixelFormat::PF_FloatRGB);
+	//		this->tex_buff->UpdateResource();
+	//		if (_old_tex) {
+	//			Eigen::Vector2i _old_size{ _old_tex->GetSizeX(), _old_tex->GetSizeY() };
+	//			Eigen::Vector2i _diff = ((_old_origin - this->map_origin) / this->resolution).cast<int>();
+	//			const FUpdateTextureRegion2D _update_region{ (uint32)_diff.x(), (uint32)_diff.y(), 0, 0, (uint32)_old_size.x(), (uint32)_old_size.y() };
 
-	}
+	//			_old_tex->WaitForStreaming();
+	//			this->tex_buff->WaitForStreaming();
+	//			this->tex_buff->UpdateTextureRegions(0, 1, &_update_region, _old_size.x() * 16, 16, reinterpret_cast<uint8_t*>(_old_tex->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_ONLY)));
+	//			this->tex_buff->WaitForStreaming();
+	//			_old_tex->GetPlatformData()->Mips[0].BulkData.Unlock();
+	//		}
+	//	}
+
+	//	FLinearColor* _frame_buff = reinterpret_cast<FLinearColor*>(this->tex_buff->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+	//	if (_use_selection) {
+	//		for (const int32 i : selection) {
+	//			const FLinearColor& pt = points[i];
+	//			if (this->insert<pcl::PointXYZ>(reinterpret_cast<const pcl::PointXYZ&>(pt))) {
+	//				const Eigen::Vector2i loc = this->boundingCell(pt.RGBA[0], pt.RGBA[1]);
+	//				Cell_T& _cell = this->map_data[gridIdx(loc, this->map_size)];
+	//				FLinearColor& _out = _frame_buff[loc.x() * this->map_size.y() + loc.y()];
+	//				_out.A = 1.f;
+	//				float val = std::powf((float)_cell.w / this->max(), 0.4);
+	//				if (_cell.avg_z > 0.f) {
+	//					_out.B = val;
+	//				}
+	//				else {
+	//					_out.R = val;
+	//				}
+	//			}
+	//		}
+	//	}
+	//	else {
+	//		for (const FLinearColor& pt : points) {
+	//			if (this->insert<pcl::PointXYZ>(reinterpret_cast<const pcl::PointXYZ&>(pt))) {
+	//				// finish this if its ever worth it
+	//			}
+	//		}
+	//	}
+	//	this->tex_buff->GetPlatformData()->Mips[0].BulkData.Unlock();
+
+	//}
 
 }
 
-void UTemporalMap::CloudExport(TArray<FLinearColor>& points, TArray<uint8>& colors, const float z) {
+void UAccumulatorMap::CloudExport(TArray<FLinearColor>& points, TArray<uint8>& colors, const float z) {
 	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
 	int64_t _area = this->area();
 	points.SetNum(_area);
@@ -1266,52 +1020,46 @@ void UTemporalMap::CloudExport(TArray<FLinearColor>& points, TArray<uint8>& colo
 	}
 }
 
-UTexture2D* UTemporalMap::TextureExport() {
+UTexture2D* UAccumulatorMap::TextureExport() {
 	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
-//	UTexture2D* texture_out = UTexture2D::CreateTransient(this->map_size.x(), this->map_size.y());
-//	uint8_t* raw = reinterpret_cast<uint8_t*>(texture_out->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
-//	for (int i = 0; i < this->area(); i++) {
-//		reinterpret_cast<uint32_t*>(raw)[i] = 0xFF000000;
-//		int y = i / this->map_size.x();
-//		int x = i % this->map_size.x();
-//		int idx = x * this->map_size.y() + y;
-//		if (idx >= this->area()) continue;
-//
-//		float val = std::powf((float)this->map_data[idx].w / this->max(), 0.5);
-//		if (this->map_data[idx].avg_z < 0.f) {
-//			raw[i * 4 + 2] = val * 0xFF;
-//		}
-//		else {
-//			raw[i * 4 + 0] = val * 0xFF;
-//		}
-//		//float g = 1.f - val;
-//		/*float r = (float)x / this->map.map_size.x();
-//		float g = (float)y / this->map.map_size.y();*/
-//		//raw[i * 4 + 1] = g * 0xFF;
-//		//raw[i * 4 + 2] = r * 0xFF;
-//	}
-//	texture_out->GetPlatformData()->Mips[0].BulkData.Unlock();
-//#ifdef UpdateResource
-//#pragma push_macro("UpdateResource")
-//#undef UpdateResource
-//#define UND_UpdateResource
-//#endif
-//	texture_out->UpdateResource();
-//#ifdef UND_UpdateResource
-//#pragma pop_macro("UpdateResource")
-//#undef UND_UpdateResource
-//#endif
-//	return texture_out;
+	this->tex_buff = UTexture2D::CreateTransient(this->map_size.x(), this->map_size.y());
+	uint8_t* raw = reinterpret_cast<uint8_t*>(this->tex_buff->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+	for (int i = 0; i < this->area(); i++) {
+		reinterpret_cast<uint32_t*>(raw)[i] = 0xFF000000;
+		int y = i / this->map_size.x();
+		int x = i % this->map_size.x();
+		int idx = x * this->map_size.y() + y;
+		if (idx >= this->area()) continue;
+
+		float val = std::powf((float)this->map_data[idx].w / this->max(), 0.25);
+		if (this->map_data[idx].avg_z < 0.f) {
+			raw[i * 4 + 2] = val * 0xFF;
+		}
+		else {
+			raw[i * 4 + 0] = val * 0xFF;
+		}
+	}
+	this->tex_buff->GetPlatformData()->Mips[0].BulkData.Unlock();
+#ifdef UpdateResource
+#pragma push_macro("UpdateResource")
+#undef UpdateResource
+#define UND_UpdateResource
+#endif
+	this->tex_buff->UpdateResource();
+#ifdef UND_UpdateResource
+#pragma pop_macro("UpdateResource")
+#undef UND_UpdateResource
+#endif
 	return this->tex_buff;
 }
 
-const FVector2f UTemporalMap::GetMapOrigin() {
+const FVector2f UAccumulatorMap::GetMapOrigin() {
 	return *reinterpret_cast<const FVector2f*>(&this->map_origin);
 }
-const FVector2f UTemporalMap::GetMapSize() {
+const FVector2f UAccumulatorMap::GetMapSize() {
 	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->size()) };
 }
-const float UTemporalMap::GetMaxWeight() {
+const float UAccumulatorMap::GetMaxWeight() {
 	return this->max();
 }
 
@@ -1369,7 +1117,7 @@ const float UTemporalMap::GetMaxWeight() {
 //	
 //};
 //
-//void UTemporalMap::StreamMap() {
+//void UAccumulatorMap::StreamMap() {
 //	SCOPE_CYCLE_COUNTER(STAT_WeightMapExport);
 //	cv::Mat m;
 //	this->map.toMat(m);
