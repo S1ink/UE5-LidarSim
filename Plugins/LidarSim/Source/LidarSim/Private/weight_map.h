@@ -141,7 +141,7 @@ public:
 
 
 	/** Returns false if an invalid realloc was skipped */
-	bool resizeToBounds(const Eigen::Vector4f& min, const Eigen::Vector4f& max) {
+	bool resizeToBounds(const Eigen::Vector4f& min, const Eigen::Vector4f& max, bool rebase = false) {
 
 		static const Eigen::Vector2i
 			_zero = Eigen::Vector2i::Zero();
@@ -181,7 +181,7 @@ public:
 	}
 
 	template<typename PointT>
-	void insertPoints(const pcl::PointCloud<PointT>& cloud, const pcl::Indices& selection) {
+	void insertPoints(const pcl::PointCloud<PointT>& cloud, const pcl::Indices& selection, bool rebase = false) {
 
 		const bool _use_selection = !selection.empty();
 		Eigen::Vector4f _min, _max;
@@ -190,7 +190,7 @@ public:
 		} else {
 			pcl::getMinMax3D<PointT>(cloud, _min, _max);
 		}
-		if (this->resizeToBounds(_min, _max)) {
+		if (this->resizeToBounds(_min, _max, rebase)) {
 			if (_use_selection) {
 				for (const pcl::index_t idx : selection) {
 					this->insert<PointT>(cloud.points[idx]);
