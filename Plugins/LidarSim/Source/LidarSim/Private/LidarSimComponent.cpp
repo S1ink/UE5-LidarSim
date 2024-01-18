@@ -790,6 +790,30 @@ void ULidarSimulationUtility::NegateSelection2(const int32 base, const TArray<in
 	}
 }
 
+void ULidarSimulationUtility::GenerateRanges(
+	const TArray<FLinearColor>& points, const TArray<int32>& selection, TArray<float>& out_ranges,
+	const FVector3f& origin
+) {
+	if (!selection.IsEmpty()) {
+		out_ranges.SetNum(selection.Num());
+		for (int i = 0; i < selection.Num(); i++) {
+			out_ranges[i] = FVector3f::Dist(
+				*reinterpret_cast<const FVector3f*>(&points[selection[i]]),
+				origin
+			);
+		}
+	}
+	else {
+		out_ranges.SetNum(points.Num());
+		for (int i = 0; i < points.Num(); i++) {
+			out_ranges[i] = FVector3f::Dist(
+				*reinterpret_cast<const FVector3f*>(&points[i]),
+				origin
+			);
+		}
+	}
+}
+
 
 
 

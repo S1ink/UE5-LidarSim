@@ -133,6 +133,12 @@ public:
 	static void NegateSelection2(
 		const int32 base, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<int32>& negate);
 
+	/** Blueprint callable function for generating ranges to be associated with each point */
+	UFUNCTION(DisplayName = "[LidarSim Utility] Generate Range Cloud", BlueprintCallable)
+	static void GenerateRanges(
+		UPARAM(ref) const TArray<FLinearColor>& points, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<float>& out_ranges,
+		const FVector3f& origin);
+
 
 	/** Destructive testing :O */
 	UFUNCTION(DisplayName = "Destructive Testing Utility", BlueprintCallable)
