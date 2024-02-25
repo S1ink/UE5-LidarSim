@@ -25,5 +25,7 @@ public class LidarSim : ModuleRules
 		} );
 
 		DynamicallyLoadedModuleNames.AddRange( new string[] {  } );
+
+		bUseRTTI = true;
 	}
 }
