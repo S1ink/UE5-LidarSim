@@ -139,10 +139,35 @@ public:
 		UPARAM(ref) const TArray<FLinearColor>& points, UPARAM(ref) const TArray<int32>& selection, UPARAM(ref) TArray<float>& out_ranges,
 		const FVector3f& origin);
 
+	/**  */
+	UFUNCTION(DisplayName = "[LidarSim Utility] Rectify Points", BlueprintCallable)
+	static void RectifyPoints(
+		UPARAM(ref) const TArray<FLinearColor>& points, UPARAM(ref) const TArray<int32>& selection,
+		UPARAM(ref) TArray<FLinearColor>& points_rectified, const FVector3f& rescale_axis);
+
 
 	/** Destructive testing :O */
 	UFUNCTION(DisplayName = "Destructive Testing Utility", BlueprintCallable)
 	static void DestructiveTesting(UPARAM(ref) TArray<FLinearColor>& pts_buff, UPARAM(ref) TArray<int32>& indices);
+
+
+
+
+	/** Start Networktables Server */
+	UFUNCTION(DisplayName = "[Networktables] Start Server", BlueprintCallable)
+	static void NtStartServer();
+
+	///** Start Networktables Client */
+	//UFUNCTION(DisplayName = "[Networktables] Start Client", BlueprintCallable)
+	//static void NtStartClient();
+
+	/** Stop Networktables Server */
+	UFUNCTION(DisplayName = "[Networktables] Stop Server", BlueprintCallable)
+	static void NtStopServer();
+
+	/**  */
+	UFUNCTION(DisplayName = "[Networktables] Export Point Cloud", BlueprintCallable)
+	static void NtExportCloud(const FString& topic, UPARAM(ref) const TArray<FLinearColor>& points);
 
 
 };

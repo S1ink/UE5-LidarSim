@@ -11,9 +11,14 @@ DEFINE_LOG_CATEGORY(LidarSimModule);
 void FLidarSimModule::StartupModule() {
 
 	UE_LOG(LidarSimModule, Log, TEXT("Successfully loaded PCL Version: %s \n"), TEXT(PCL_VERSION_PRETTY));
+    //nt::NetworkTableInstance::GetDefault().StartServer();
 
 }
-void FLidarSimModule::ShutdownModule() {}
+void FLidarSimModule::ShutdownModule() {
+
+    //nt::NetworkTableInstance::GetDefault().StopServer();
+
+}
 
 
  //IMPLEMENT_MODULE(FLidarSimModule, LidarSimModule)

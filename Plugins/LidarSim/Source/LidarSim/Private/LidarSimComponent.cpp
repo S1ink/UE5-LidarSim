@@ -21,6 +21,9 @@ THIRD_PARTY_INCLUDES_START
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 
+#include <networktables/NetworkTableInstance.h>
+#include <networktables/RawTopic.h>
+
 #include "mem_utils.h"
 THIRD_PARTY_INCLUDES_END
 
@@ -869,6 +872,26 @@ void ULidarSimulationUtility::GenerateRanges(
 	}
 }
 
+void ULidarSimulationUtility::RectifyPoints(
+	const TArray<FLinearColor>& points, const TArray<int32>& selection,
+	TArray<FLinearColor>& points_rectified, const FVector3f& rescale_axis
+) {
+	const FLinearColor _m{ rescale_axis };	// copies x,y,z and sets last float to 1.f -- just what we want
+	if (!selection.IsEmpty()) {
+		points_rectified.SetNum(selection.Num());
+		for (int i = 0; i < selection.Num(); i++) {
+			points_rectified.Emplace(points[selection[i]]);
+			points_rectified.Last() *= _m;
+		}
+	} else {
+		//points_rectified.SetNum(points.Num());
+		points_rectified = points;
+		for (int i = 0; i < points_rectified.Num(); i++) {
+			points_rectified[i] *= _m;
+		}
+	}
+}
+
 
 
 
@@ -913,6 +936,33 @@ void ULidarSimulationUtility::DestructiveTesting(TArray<FLinearColor>& pts_buff,
 	memSwap(v2, pts_buff);*/
 
 	// The point of this function is to stress test the memswap and the allocators since the shared points gets deleted when it goes out of function scope -- forcing the input buffer to be deleted like a vector
+
+}
+
+
+
+
+
+
+/** Networktables interface */
+
+void ULidarSimulationUtility::NtStartServer() {
+	nt::NetworkTableInstance::GetDefault().StartServer();
+}
+
+void ULidarSimulationUtility::NtStopServer() {
+	nt::NetworkTableInstance::GetDefault().StopServer();
+}
+
+void ULidarSimulationUtility::NtExportCloud(const FString& topic, const TArray<FLinearColor>& points) {
+
+	static nt::RawEntry _entry = nt::NetworkTableInstance::GetDefault().GetRawTopic(TCHAR_TO_UTF8(*topic)).GetEntry("PointXYZ_[]", {});
+	_entry.Set(
+		std::span<const uint8_t>{
+			reinterpret_cast<const uint8_t*>( points.GetData() ),
+			reinterpret_cast<const uint8_t*>( points.GetData() + points.Num() )
+		}
+	);
 
 }
 
