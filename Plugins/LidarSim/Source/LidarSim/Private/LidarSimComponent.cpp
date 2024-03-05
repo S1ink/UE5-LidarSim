@@ -23,6 +23,7 @@ THIRD_PARTY_INCLUDES_START
 
 #include <networktables/NetworkTableInstance.h>
 #include <networktables/RawTopic.h>
+#include <networktables/FloatArrayTopic.h>
 
 #include "mem_utils.h"
 THIRD_PARTY_INCLUDES_END
@@ -457,10 +458,10 @@ const TArray<int32>& ULidarSimulationComponent::GetDefaultSelection() {
 void ULidarSimulationComponent::Scan(
 	const TArray<FVector>& directions, /*UScanResult* cloud_out,*/
 	TArray<FLinearColor>& cloud_out, TArray<float>& ranges_out,
-	const float max_range, const float noise_distance_scale
+	const float max_range, const float noise_distance_scale, const bool ref_coords
 ) {
 	SCOPE_CYCLE_COUNTER(STAT_BulkScan);
-	ULidarSimulationUtility::LidarScan( this->GetOwner(), directions, cloud_out, ranges_out, max_range, noise_distance_scale );
+	ULidarSimulationUtility::LidarScan( this->GetOwner(), directions, cloud_out, ranges_out, max_range, noise_distance_scale, ref_coords );
 }
 
 
@@ -486,19 +487,30 @@ void ULidarSimulationUtility::GenerateDirections(const TArray<float>& thetas, co
 void ULidarSimulationUtility::LidarScan(
 	const AActor* src, const TArray<FVector>& directions,
 	TArray<FLinearColor>& cloud_out, TArray<float>& ranges_out,
-	const float max_range, const float noise_distance_scale
+	const float max_range, const float noise_distance_scale, const bool ref_coords
 ) {
 	cloud_out.SetNum(0);
 	ranges_out.SetNum(0);
 	cloud_out.Reserve(directions.Num());
 	ranges_out.Reserve(directions.Num());
-	scan<double>(src, directions, max_range,
-		[&](const FHitResult& result, int idx) {
-			const float noise = FMath::FRand() * noise_distance_scale * result.Distance;
-			cloud_out.Emplace(result.Location + (directions[idx] * noise));
-			ranges_out.Emplace(result.Distance + noise);
-		}
-	);
+	const FTransform to_ref = src->ActorToWorld().Inverse();
+	if (ref_coords) {
+		scan<double>(src, directions, max_range,
+			[&](const FHitResult& result, int idx) {
+				const float noise = FMath::FRand() * noise_distance_scale * result.Distance;
+				cloud_out.Emplace(to_ref.TransformPositionNoScale(result.Location + (directions[idx] * noise)));
+				ranges_out.Emplace(result.Distance + noise);
+			}
+		);
+	} else {
+		scan<double>(src, directions, max_range,
+			[&](const FHitResult& result, int idx) {
+				const float noise = FMath::FRand() * noise_distance_scale * result.Distance;
+				cloud_out.Emplace(result.Location + (directions[idx] * noise));
+				ranges_out.Emplace(result.Distance + noise);
+			}
+		);
+	}
 }
 
 
@@ -962,6 +974,19 @@ void ULidarSimulationUtility::NtExportCloud(const FString& topic, const TArray<F
 			reinterpret_cast<const uint8_t*>( points.GetData() ),
 			reinterpret_cast<const uint8_t*>( points.GetData() + points.Num() )
 		}
+	);
+
+}
+
+void ULidarSimulationUtility::NtExportPose(const FString& topic, const FVector3f& position, const FQuat4f& quat) {
+
+	static nt::FloatArrayEntry _entry = nt::NetworkTableInstance::GetDefault().GetFloatArrayTopic(TCHAR_TO_UTF8(*topic)).GetEntry({});
+	static constexpr size_t _len = sizeof(FVector3f) + sizeof(FQuat4f);
+	static float _data[_len / sizeof(float)];
+	memcpy(_data, &position, sizeof(FVector3f));
+	memcpy(_data + sizeof(FVector3f) / sizeof(float), &quat, sizeof(FQuat4f));
+	_entry.Set(
+		std::span<const float>{ _data, _data + (_len / sizeof(float)) }
 	);
 
 }

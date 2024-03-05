@@ -42,7 +42,7 @@ public:
 	void Scan(
 		UPARAM(ref) const TArray<FVector>& directions, /*UPARAM(ref) UScanResult* cloud_out,*/
 		UPARAM(ref) TArray<FLinearColor>& cloud_out, UPARAM(ref) TArray<float>& ranges_out,
-		const float max_range = 1e3f, const float noise_distance_scale = 5e-3f);
+		const float max_range = 1e3f, const float noise_distance_scale = 5e-3f, const bool ref_coords = false);
 
 
 };
@@ -70,7 +70,7 @@ public:
 	static void LidarScan(
 		const AActor* src, UPARAM(ref) const TArray<FVector>& directions, 
 		UPARAM(ref) TArray<FLinearColor>& cloud_out, UPARAM(ref) TArray<float>& ranges_out,
-		const float max_range = 1e3f, const float noise_distance_scale = 5e-3f);
+		const float max_range = 1e3f, const float noise_distance_scale = 5e-3f, const bool ref_coords = false);
 
 
 	/** Blueprint callable voxelization function. */
@@ -165,9 +165,13 @@ public:
 	UFUNCTION(DisplayName = "[Networktables] Stop Server", BlueprintCallable)
 	static void NtStopServer();
 
-	/**  */
+	/** Export a cloud to NT as a raw buffer -- note that the topic exists statically so making multiple calls to different topics may fail */
 	UFUNCTION(DisplayName = "[Networktables] Export Point Cloud", BlueprintCallable)
 	static void NtExportCloud(const FString& topic, UPARAM(ref) const TArray<FLinearColor>& points);
+
+	/** Export a quaternion to NT as a double array -- note that the topic exists statically so making multiple calls to different topics may fail */
+	UFUNCTION(DisplayName = "[Networktables] Export Pose", BlueprintCallable)
+	static void NtExportPose(const FString& topic, const FVector3f& position, const FQuat4f& quat);
 
 
 };
