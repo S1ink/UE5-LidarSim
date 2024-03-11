@@ -1012,7 +1012,7 @@ UTexture2D* ULidarSimulationUtility::NtReadGrid(const FString& topic) {
 		reinterpret_cast<uint32_t*>(_traw)[i] = 0xFF000000;
 		int y = i / _x;
 		int x = i % _x;
-		int idx = x * _y + y;
+		int idx = x * _y + (_y - y);
 		if (idx >= _x * _y) continue;
 
 		uint8* _pix = _traw + (i * 4);
