@@ -964,6 +964,16 @@ void ULidarSimulationUtility::NtStartServer() {
 	nt::NetworkTableInstance::GetDefault().StartServer();
 }
 
+void ULidarSimulationUtility::NtStartClientServer(const FString& server_address, int port) {
+	nt::NetworkTableInstance::GetDefault().StartClient4("uesim");
+	nt::NetworkTableInstance::GetDefault().SetServer(TCHAR_TO_UTF8(*server_address), (unsigned int)port);
+}
+
+void ULidarSimulationUtility::NtStartClientTeam(int team, int port) {
+	nt::NetworkTableInstance::GetDefault().StartClient4("uesim");
+	nt::NetworkTableInstance::GetDefault().SetServerTeam((unsigned int)team, (unsigned int)port);
+}
+
 void ULidarSimulationUtility::NtStopServer() {
 	nt::NetworkTableInstance::GetDefault().StopServer();
 }

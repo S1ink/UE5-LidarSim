@@ -158,9 +158,13 @@ public:
 	UFUNCTION(DisplayName = "[Networktables] Start Server", BlueprintCallable)
 	static void NtStartServer();
 
-	///** Start Networktables Client */
-	//UFUNCTION(DisplayName = "[Networktables] Start Client", BlueprintCallable)
-	//static void NtStartClient();
+	/** Start Networktables Client with server address and port */
+	UFUNCTION(DisplayName = "[Networktables] Start Client (with server address)", BlueprintCallable)
+	static void NtStartClientServer(const FString& server_address, int port = 0);
+
+	/** Start Networktables Client with roborio team # */
+	UFUNCTION(DisplayName = "[Networktables] Start Client (with team number)", BlueprintCallable)
+	static void NtStartClientTeam(int team, int port = 0);
 
 	/** Stop Networktables Server */
 	UFUNCTION(DisplayName = "[Networktables] Stop Server", BlueprintCallable)
