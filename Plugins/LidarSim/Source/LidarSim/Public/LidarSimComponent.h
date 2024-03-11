@@ -11,6 +11,7 @@
 THIRD_PARTY_INCLUDES_START
 #include "weight_map.h"		// these are not strictly "third party" but they include third party headers
 #include "pcd_streaming.h"
+#include "generic/accumulator_grid2.hpp"
 THIRD_PARTY_INCLUDES_END
 //#ifdef REMOVED_UE_CHECK
 //#undef REMOVED_UE_CHECK
@@ -173,6 +174,10 @@ public:
 	UFUNCTION(DisplayName = "[Networktables] Export Pose", BlueprintCallable)
 	static void NtExportPose(const FString& topic, const FVector3f& position, const FQuat4f& quat);
 
+	/** Attempt to read a grid from the provided topic and convert it to a texture. */
+	UFUNCTION(DisplayName = "[Networktables] Read Grid", BlueprintCallable)
+	static UTexture2D* NtReadGrid(const FString& topic);
+
 
 };
 
@@ -287,6 +292,44 @@ public:
 
 	/*UFUNCTION(DisplayName = "Export map to stream", BlueprintCallable)
 	void StreamMap();*/
+
+
+protected:
+	UTexture2D* tex_buff{ nullptr };
+
+
+};
+
+
+
+UCLASS(Blueprintable, BlueprintType, ClassGroup = Utility)
+class LIDARSIM_API UQuantizedRatioGrid : public UObject, public QuantizedRatioGrid<uint8, float, int32, float> {
+
+	GENERATED_BODY()
+
+public:
+
+	UFUNCTION(DisplayName = "[QuantizedRatioGrid] Reset Grid", BlueprintCallable)
+	void Reset(float resolution, const FVector2f offset);
+
+	UFUNCTION(DisplayName = "[QuantizedRatioGrid] Update Ratio (Points)", BlueprintCallable)
+	void AddPoints(
+		UPARAM(ref) const TArray<FLinearColor>& points,
+		UPARAM(ref) const TArray<int32>& base_selection,
+		UPARAM(ref) const TArray<int32>& filtered_selection);
+
+	UFUNCTION(DisplayName = "[QuantizedRatioGrid] Export to Texture", BlueprintCallable)
+	UTexture2D* TextureExport();
+
+
+	UFUNCTION(DisplayName = "[QuantizedRatioGrid] Grid Origin", BlueprintCallable, BlueprintPure)
+	const FVector2f GridOrigin();
+
+	UFUNCTION(DisplayName = "[QuantizedRatioGrid] Grid Size", BlueprintCallable, BlueprintPure)
+	const FVector2f GridSize();
+
+	UFUNCTION(DisplayName = "[QuantizedRatioGrid] Grid Area", BlueprintCallable, BlueprintPure)
+	const int64 GridArea();
 
 
 protected:

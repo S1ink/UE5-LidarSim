@@ -443,6 +443,8 @@ DECLARE_CYCLE_STAT(TEXT("Filter Range"), STAT_FilterRange, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Progressive Morphological Filter"), STAT_PMFilter, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Weight Map Insert"), STAT_WeightMapInsert, STATGROUP_LidarSim);
 DECLARE_CYCLE_STAT(TEXT("Weight Map Export"), STAT_WeightMapExport, STATGROUP_LidarSim);
+DECLARE_CYCLE_STAT(TEXT("QRGrid Insert"), STATU_QRatioGridInsert, STATGROUP_LidarSim);
+DECLARE_CYCLE_STAT(TEXT("QRGrid Export"), STATU_QRatioGridExport, STATGROUP_LidarSim);
 
 DEFINE_LOG_CATEGORY(LidarSimComponent);
 
@@ -991,6 +993,46 @@ void ULidarSimulationUtility::NtExportPose(const FString& topic, const FVector3f
 
 }
 
+UTexture2D* ULidarSimulationUtility::NtReadGrid(const FString& topic) {
+
+	static nt::RawEntry _entry = nt::NetworkTableInstance::GetDefault().GetRawTopic(TCHAR_TO_UTF8(*topic)).GetEntry("Grid<U8>", {});
+	std::vector<uint8_t> _raw = _entry.Get();
+
+	if (_raw.size() < 16) return nullptr;
+
+	const int64_t
+		_x = reinterpret_cast<int64_t*>(_raw.data())[0],
+		_y = reinterpret_cast<int64_t*>(_raw.data())[1];
+	const uint8_t*
+		_data = _raw.data() + (sizeof(int64_t) * 2);
+
+	UTexture2D* _tex = UTexture2D::CreateTransient(_x, _y);
+	uint8* _traw = reinterpret_cast<uint8*>(_tex->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+	for (int i = 0; i < _x * _y; i++) {
+		reinterpret_cast<uint32_t*>(_traw)[i] = 0xFF000000;
+		int y = i / _x;
+		int x = i % _x;
+		int idx = x * _y + y;
+		if (idx >= _x * _y) continue;
+
+		uint8* _pix = _traw + (i * 4);
+		_pix[0] = _pix[1] = _pix[2] = _data[idx];
+	}
+	_tex->GetPlatformData()->Mips[0].BulkData.Unlock();
+#ifdef UpdateResource
+#pragma push_macro("UpdateResource")
+#undef UpdateResource
+#define UND_UpdateResource
+#endif
+	_tex->UpdateResource();
+#ifdef UND_UpdateResource
+#pragma pop_macro("UpdateResource")
+#undef UND_UpdateResource
+#endif
+	return _tex;
+
+}
+
 
 
 
@@ -1215,6 +1257,85 @@ const FVector2f UAccumulatorMap::GetMapSize() {
 }
 const float UAccumulatorMap::GetMaxWeight() {
 	return this->max();
+}
+
+
+
+
+
+void UQuantizedRatioGrid::Reset(float resolution, const FVector2f offset) {
+	this->reset(resolution, *reinterpret_cast<const Eigen::Vector2f*>(&offset));
+	this->tex_buff = nullptr;
+}
+
+void UQuantizedRatioGrid::AddPoints(
+	const TArray<FLinearColor>& points,
+	const TArray<int32>& base_selection,
+	const TArray<int32>& filtered_selection
+) {
+	SCOPE_CYCLE_COUNTER(STATU_QRatioGridInsert);
+
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud{ new pcl::PointCloud<pcl::PointXYZ> };
+	pcl::Indices base{}, filtered{};
+
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
+	memSwap(base, const_cast<TArray<int32>&>(base_selection));
+	memSwap(filtered, const_cast<TArray<int32>&>(filtered_selection));
+	this->incrementRatio(*cloud, base, filtered);
+	memSwap(base, const_cast<TArray<int32>&>(base_selection));
+	memSwap(filtered, const_cast<TArray<int32>&>(filtered_selection));
+	memSwap(*cloud, const_cast<TArray<FLinearColor>&>(points));
+}
+
+UTexture2D* UQuantizedRatioGrid::TextureExport() {
+	SCOPE_CYCLE_COUNTER(STATU_QRatioGridExport);
+	const Eigen::Vector2<IntT>& _size = this->size();
+	if (!this->tex_buff || this->tex_buff->GetSizeX() != _size.x() || this->tex_buff->GetSizeY() != _size.y()) {
+		this->tex_buff = UTexture2D::CreateTransient(_size.x(), _size.y());
+	}
+	uint8* raw = reinterpret_cast<uint8*>(this->tex_buff->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+	for (int i = 0; i < this->area(); i++) {
+		reinterpret_cast<uint32_t*>(raw)[i] = 0xFF000000;
+		int y = i / _size.x();
+		int x = i % _size.x();
+		int idx = x * _size.y() + y;
+		if (idx >= this->area()) continue;
+
+		uint8* _pix = raw + (i * 4);
+		_pix[0] = _pix[1] = _pix[2] = this->buffer[idx];
+
+		//float val = std::powf((float)this->map_data[idx].w / this->max(), 0.25);
+		/*if (this->map_data[idx].avg_z < 0.f) {
+			raw[i * 4 + 2] = val * 0xFF;
+		}
+		else {
+			raw[i * 4 + 0] = val * 0xFF;
+		}*/
+
+
+	}
+	this->tex_buff->GetPlatformData()->Mips[0].BulkData.Unlock();
+#ifdef UpdateResource
+#pragma push_macro("UpdateResource")
+#undef UpdateResource
+#define UND_UpdateResource
+#endif
+	this->tex_buff->UpdateResource();
+#ifdef UND_UpdateResource
+#pragma pop_macro("UpdateResource")
+#undef UND_UpdateResource
+#endif
+	return this->tex_buff;
+}
+
+const FVector2f UQuantizedRatioGrid::GridOrigin() {
+	return *reinterpret_cast<const FVector2f*>(&this->grid_origin);
+}
+const FVector2f UQuantizedRatioGrid::GridSize() {
+	return FVector2f{ reinterpret_cast<const UE::Math::TIntPoint<int>&>(this->size()) };
+}
+const int64 UQuantizedRatioGrid::GridArea() {
+	return this->area();
 }
 
 
