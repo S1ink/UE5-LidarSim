@@ -978,6 +978,10 @@ void ULidarSimulationUtility::NtStopServer() {
 	nt::NetworkTableInstance::GetDefault().StopServer();
 }
 
+void ULidarSimulationUtility::NtStopClient() {
+	nt::NetworkTableInstance::GetDefault().StopClient();
+}
+
 void ULidarSimulationUtility::NtExportCloud(const FString& topic, const TArray<FLinearColor>& points) {
 
 	static nt::RawEntry _entry = nt::NetworkTableInstance::GetDefault().GetRawTopic(TCHAR_TO_UTF8(*topic)).GetEntry("PointXYZ_[]", {});

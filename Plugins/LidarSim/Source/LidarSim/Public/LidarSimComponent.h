@@ -170,6 +170,10 @@ public:
 	UFUNCTION(DisplayName = "[Networktables] Stop Server", BlueprintCallable)
 	static void NtStopServer();
 
+	/** Stop Networktables Client */
+	UFUNCTION(DisplayName = "[Networktables] Stop Client", BlueprintCallable)
+	static void NtStopClient();
+
 	/** Export a cloud to NT as a raw buffer -- note that the topic exists statically so making multiple calls to different topics may fail */
 	UFUNCTION(DisplayName = "[Networktables] Export Point Cloud", BlueprintCallable)
 	static void NtExportCloud(const FString& topic, UPARAM(ref) const TArray<FLinearColor>& points);
