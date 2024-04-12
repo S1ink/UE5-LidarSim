@@ -1014,25 +1014,26 @@ UTexture2D* ULidarSimulationUtility::NtReadGrid(const FString& topic) {
 	static nt::RawEntry _entry = nt::NetworkTableInstance::GetDefault().GetRawTopic(TCHAR_TO_UTF8(*topic)).GetEntry("Grid<U8>", {});
 	std::vector<uint8_t> _raw = _entry.Get();
 
-	if (_raw.size() < 16) return nullptr;
+	if (_raw.size() <= 20) return nullptr;
 
-	const int64_t
-		_x = reinterpret_cast<int64_t*>(_raw.data())[0],
-		_y = reinterpret_cast<int64_t*>(_raw.data())[1];
+	const int32_t
+		_x = reinterpret_cast<int32_t*>(_raw.data())[0],
+		_y = reinterpret_cast<int32_t*>(_raw.data())[1];
+	if (_x * _y + 20 < _raw.size()) return nullptr;
 	const uint8_t*
-		_data = _raw.data() + (sizeof(int64_t) * 2);
+		_data = _raw.data() + 20;
 
 	UTexture2D* _tex = UTexture2D::CreateTransient(_x, _y);
 	uint8* _traw = reinterpret_cast<uint8*>(_tex->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
 	for (int i = 0; i < _x * _y; i++) {
 		reinterpret_cast<uint32_t*>(_traw)[i] = 0xFF000000;
-		int y = i / _x;
+		/*int y = i / _x;
 		int x = i % _x;
 		int idx = x * _y + (_y - y);
-		if (idx >= _x * _y) continue;
+		if (idx >= _x * _y) continue;*/
 
 		uint8* _pix = _traw + (i * 4);
-		_pix[0] = _pix[1] = _pix[2] = _data[idx];
+		_pix[0] = _pix[1] = _pix[2] = _data[i];
 	}
 	_tex->GetPlatformData()->Mips[0].BulkData.Unlock();
 #ifdef UpdateResource
