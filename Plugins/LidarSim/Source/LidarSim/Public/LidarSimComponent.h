@@ -174,17 +174,39 @@ public:
 	UFUNCTION(DisplayName = "[Networktables] Stop Client", BlueprintCallable)
 	static void NtStopClient();
 
+	/** Flush Networktables Updates to the network */
+	UFUNCTION(DisplayName = "[Networktables] Flush Data", BlueprintCallable)
+	static void NtFlush();
+
 	/** Export a cloud to NT as a raw buffer -- note that the topic exists statically so making multiple calls to different topics may fail */
 	UFUNCTION(DisplayName = "[Networktables] Export Point Cloud", BlueprintCallable)
-	static void NtExportCloud(const FString& topic, UPARAM(ref) const TArray<FLinearColor>& points);
+	static void NtExportCloud(const FString& topic, UPARAM(ref) const TArray<FLinearColor>& points, int64 t_micros = 0);
 
 	/** Export a quaternion to NT as a double array -- note that the topic exists statically so making multiple calls to different topics may fail */
 	UFUNCTION(DisplayName = "[Networktables] Export Pose", BlueprintCallable)
-	static void NtExportPose(const FString& topic, const FVector3f& position, const FQuat4f& quat);
+	static void NtExportPose(const FString& topic, const FVector3f& position, const FQuat4f& quat, int64 t_micros = 0);
+
+	/** Export simulated IMU data (for ROS) */
+	UFUNCTION(DisplayName = "[Networktables] Export IMU components (for ROS)", BlueprintCallable)
+	static void NtExportImu(const FString& topic, const FQuat4f& orient, const FVector3f& angular_vel, const FVector3f& linear_acc, int64 t_micros = 0);
 
 	/** Attempt to read a grid from the provided topic and convert it to a texture. */
 	UFUNCTION(DisplayName = "[Networktables] Read Grid", BlueprintCallable)
 	static UTexture2D* NtReadGrid(const FString& topic);
+
+
+	/** Get the current networktables connection timestamp */
+	UFUNCTION(DisplayName = "[Networktables] Get NT timestamp", BlueprintCallable)
+	static int64 NtMicros();
+
+	/** Get the time since epoch in microseconds */
+	UFUNCTION(DisplayName = "[LidarSim Utility] Get unix microseconds", BlueprintCallable)
+	static int64 UnixMicros();
+
+
+	/** Get the angular velocity between two orientations and a delta time (roll, yaw, pitch vector) */
+	UFUNCTION(DisplayName = "[LidarSim Utility] Angular velocity from quaternions", BlueprintCallable)
+	static FVector3f AngularVelFromQuats(const FQuat4f& from, const FQuat4f& to, const double dt_seconds);
 
 
 };

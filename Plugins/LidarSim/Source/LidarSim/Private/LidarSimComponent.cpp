@@ -984,19 +984,24 @@ void ULidarSimulationUtility::NtStopClient() {
 	nt::NetworkTableInstance::GetDefault().StopClient();
 }
 
-void ULidarSimulationUtility::NtExportCloud(const FString& topic, const TArray<FLinearColor>& points) {
+void ULidarSimulationUtility::NtFlush() {
+	nt::NetworkTableInstance::GetDefault().Flush();
+}
+
+void ULidarSimulationUtility::NtExportCloud(const FString& topic, const TArray<FLinearColor>& points, int64 time) {
 
 	static nt::RawEntry _entry = nt::NetworkTableInstance::GetDefault().GetRawTopic(TCHAR_TO_UTF8(*topic)).GetEntry("PointXYZ_[]", {});
 	_entry.Set(
 		std::span<const uint8_t>{
 			reinterpret_cast<const uint8_t*>( points.GetData() ),
 			reinterpret_cast<const uint8_t*>( points.GetData() + points.Num() )
-		}
+		},
+		time
 	);
 
 }
 
-void ULidarSimulationUtility::NtExportPose(const FString& topic, const FVector3f& position, const FQuat4f& quat) {
+void ULidarSimulationUtility::NtExportPose(const FString& topic, const FVector3f& position, const FQuat4f& quat, int64 time) {
 
 	static nt::FloatArrayEntry _entry = nt::NetworkTableInstance::GetDefault().GetFloatArrayTopic(TCHAR_TO_UTF8(*topic)).GetEntry({});
 	static constexpr size_t _len = sizeof(FVector3f) + sizeof(FQuat4f);
@@ -1004,7 +1009,26 @@ void ULidarSimulationUtility::NtExportPose(const FString& topic, const FVector3f
 	memcpy(_data, &position, sizeof(FVector3f));
 	memcpy(_data + sizeof(FVector3f) / sizeof(float), &quat, sizeof(FQuat4f));
 	_entry.Set(
-		std::span<const float>{ _data, _data + (_len / sizeof(float)) }
+		std::span<const float>{ _data, _data + (_len / sizeof(float)) },
+		time
+	);
+
+}
+
+void ULidarSimulationUtility::NtExportImu(const FString& topic, const FQuat4f& orient, const FVector3f& ang_vel, const FVector3f& lin_acc, int64 time) {
+
+	static nt::FloatArrayEntry _entry = nt::NetworkTableInstance::GetDefault().GetFloatArrayTopic(TCHAR_TO_UTF8(*topic)).GetEntry({});
+	static constexpr size_t _len = sizeof(FQuat4f) + sizeof(FVector3f) * 2;
+	static uint8_t _data[_len];
+	memcpy(_data, &orient, sizeof(FQuat4f));
+	memcpy(_data + sizeof(FQuat4f), &ang_vel, sizeof(FVector3f));
+	memcpy(_data + sizeof(FQuat4f) + sizeof(FVector3f), &lin_acc, sizeof(FVector3f));
+	_entry.Set(
+		std::span<const float>{
+			reinterpret_cast<float*>(_data),
+			reinterpret_cast<float*>(_data + _len)
+		},
+		time
 	);
 
 }
@@ -1047,6 +1071,26 @@ UTexture2D* ULidarSimulationUtility::NtReadGrid(const FString& topic) {
 #undef UND_UpdateResource
 #endif
 	return _tex;
+
+}
+
+
+int64 ULidarSimulationUtility::NtMicros() {
+	return nt::Now();
+}
+
+int64 ULidarSimulationUtility::UnixMicros() {
+	return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+}
+
+
+FVector3f ULidarSimulationUtility::AngularVelFromQuats(const FQuat4f& from, const FQuat4f& to, const double dt_seconds) {
+
+	return (2.0 / dt_seconds) * FVector3f{
+		(from.W * to.X) - (from.X * to.W) - (from.Y * to.Z) + (from.Z * to.Y),
+		(from.W * to.Y) + (from.X * to.Z) - (from.Y * to.W) - (from.Z * to.X),
+		(from.W * to.Z) - (from.X * to.Y) + (from.Y * to.X) - (from.Z * to.W),
+	};
 
 }
 
